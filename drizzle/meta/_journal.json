@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790882799484,
+      "tag": "0000_round_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790959639148,
+      "tag": "0001_flimsy_stone_men",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791421374222,
+      "tag": "0002_romantic_paper_doll",
+      "breakpoints": true
+    }
+  ]
+}

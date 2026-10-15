@@ -1,0 +1,3 @@
+import { cleanProfile, cookie, decode, failure, guard, json, row, runtime, saveProfile } from "@/lib/server";
+export async function GET(request: Request) { try { const r = await row(request); return json({ world: r ? decode(r) : null, liveAvailable: !!runtime().OPENAI_API_KEY, serverTime: Date.now() }); } catch (e) { return failure(e); } }
+export async function POST(request: Request) { try { guard(request); const result = await saveProfile(request, cleanProfile(await request.json())); return json({ world: result.world }, 200, { "Set-Cookie": cookie(result.id, request) }); } catch (e) { return failure(e, 400); } }
