@@ -1,2 +1,2 @@
-import Heartbeat from "./heartbeat";
-export default function Home() { return <Heartbeat />; }
+import { Landing } from '@/components/product-shell';
+export default Landing;

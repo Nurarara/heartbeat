@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {nightQuality} from '../lib/ai/night-quality.ts';
+const dark=await readFile('public/showcase/harbour.jpg'),bright=await readFile('public/showcase/orchard.jpg');
+assert.equal(nightQuality(dark).acceptable,true);
+assert.equal(nightQuality(bright).acceptable,false);
+assert.throws(()=>nightQuality(new Uint8Array([255,216,255,217])));
+const before=dark.slice();nightQuality(dark);assert.deepEqual(dark,before,'Quality inspection never modifies image bytes');
+const regression=await readFile('tests/fixtures/bright-pencil-night.jpg');assert.equal(nightQuality(regression).acceptable,false,'The real pencil-night regression is rejected');
+console.log('Passed real JPEG server quality checks across wide/portrait/full-frame crops, bright-scene rejection, malformed-image rejection, unchanged image bytes and the recorded pencil-night regression.');

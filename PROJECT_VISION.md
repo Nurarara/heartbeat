@@ -1,254 +1,141 @@
-# Heartbeat: rationale, scope and future vision
+﻿# Heartbeat — project vision and decisions
 
-## The idea
+Updated 21 October 2026. [README.md](README.md) describes how to run the current system. This document records the intended experience, what has been implemented, why the architecture and design were chosen, what is still missing and how to proceed.
 
-Heartbeat turns a screen into a living visual surface. A person supplies their city. The system resolves local time, date and outdoor temperature, interprets what those signals mean for atmosphere, and creates an evolving visual experience that can be left running in a room.
+## The product
 
-The product's value is the feeling it creates in a space: calm, warmth, energy, shelter, quiet or a sense of a day unfolding. Its long-term category is **adaptive ambient computing and living visual surfaces**.
+Heartbeat is a living ambient surface for screens: a wallpaper or screensaver that interprets the local environment and creates an atmosphere people enjoy leaving in their room. It uses the selected city's time, outdoor weather, temperature, date and season. These are creative clues, not a claim that the system reads a person's emotions or senses their room.
 
-The first question is practical: **Will people enjoy leaving this running in their room?** A beautiful screenshot, a working weather call or a simulated image sequence does not answer that question by itself.
+A bright Sunday might suggest a lazy anime afternoon in an airy Japanese home. A cold rainy morning might suggest shelter, an empty station, a pencil study or a distant landscape. Dogs chasing a ball under a single tree can be as appropriate as a cinematic city. The director should choose an image's subject, action, style, materials, composition and lighting deliberately, with enough freedom to surprise.
 
-This document distinguishes the intended product from the existing prototype. The current status and implementation map are in [README.md](README.md).
+At night the image must respect the room: dark, restrained, comfortable and free of sudden bright replacements. Holidays are optional, subtle cues; location alone must not assign a person's culture or beliefs.
 
-## The latest product contract
+The product test is **whether someone chooses to leave it running and return to it**, not whether an image endpoint responds successfully.
 
-The October product correction supersedes the earlier name/style/vibe onboarding concept for the default first version.
+## The current experience contract
 
-| Decision | Current intended direction |
+| Area | Decision |
 | --- | --- |
-| Opening | The name `heartbeat` and one city input. |
-| Setup | Resolve the city and timezone, then begin. No name, style or vibe questionnaire. |
-| Ambient display | Artwork, accurate time and outdoor temperature. |
-| Date | An input to reasoning; no extra permanent date UI is required by the latest direction. |
-| Core intelligence | Interpret time, temperature and date together to choose what the artwork communicates. |
-| Creative decisions | The system chooses subject, activity, composition, lighting and atmosphere. |
-| Continuity | Maintain a coherent aesthetic and believable development, while allowing new subjects and views. |
-| Heartbeat | Consider the world roughly every ten minutes; expensive generation is conditional. |
-| Interaction | Controls appear when needed and disappear while the display is left alone. |
-| Reliability | Keep the current artwork visible until a valid replacement is ready. |
+| Introduction | An expressive, immersive site that lets people feel the product before reading a feature inventory |
+| Onboarding | Sign in/create an account for private AI use, then choose a city; no provider key or prompt-writing requirement |
+| Optional preferences | Visual language, temperature units, motion and festive touches; these are not mandatory questionnaires |
+| Ambient mode | Artwork, correct local time and outdoor temperature; controls recede when idle |
+| Honesty | Illustrative previews and generation capacity are identified; a fallback must not masquerade as fresh AI artwork |
+| Intelligence | Use actual weather/time/date together, interpret their atmospheric meaning and consider recent displayed history |
+| Memory | Retain useful preferences and bounded creative history rather than an ever-growing conversation |
+| Reliability | Keep the current valid picture until the next is decoded and safe; recover existing jobs without repeating paid requests |
+| Customer access | Ordinary account/subscription access; provider credentials stay with Heartbeat's server |
+| Product shape | Browser experience first, Windows companion in development, hardware and fleet management later |
 
-Additional weather signals may improve interpretation later, but the basic experience must be convincing with time, temperature and date. Existing weather collection is an implementation detail, not a reason to add weather cards, forecasts or more questions.
+The earlier city-only free study remains available at `/local-study`. The current paid-product direction adds accounts for ownership and entitlements without asking customers to configure AI services.
 
-## Why these choices
+## What has been built
 
-### One city input
+### Context and creative planning
 
-The user is choosing an atmosphere for a room, not configuring a creative workstation. Asking for a name, a style and a carefully written vibe places creative work on the person before they have seen the value.
+The engine resolves a city/timezone, fetches real outdoor observations, checks freshness and uses local clock/solar information, weekday/weekend and hemisphere-aware season. It does not fabricate an outdoor reading when data is unavailable. Weather is a local-area estimate, not an indoor sensor.
 
-City input provides the geographic reference needed for a timezone and local-area temperature. The system should carry the remaining creative burden. Location disambiguation can remain within that one input rather than becoming a second onboarding flow.
+A local policy supplies immediate free artwork and bounded fallback decisions. The Cloudflare runtime director receives current context, a compact creative memory and compatible inspiration, and returns structured HOLD or REIMAGINE instructions. Image generation produces private JPEG artwork when server configuration and budgets permit it. A working API adapter does not establish sustained artistic quality.
 
-The city should be remembered so later visits can return directly to the display. A quiet way to change it is useful; repeated onboarding is not.
+The creative mesh currently has 93 ingredients across categories such as place, subject, action, object, material, style and composition. Compatibility/context rules reduce incoherent combinations. The mesh is inspiration, not a rigid list of all pictures the model may produce. The model can reinterpret or invent beyond it.
 
-### Time, temperature and date as the first reasoning inputs
+### Memory and uniqueness
 
-These inputs are easy for a person to understand and rich enough to test the core idea. They describe the rhythm of a day, the likely relationship between outside and shelter, and the seasonal context of a place.
+The system retains the active city's last twelve committed directions, bounded ingredient/taste summaries and semantic fingerprints. Actual displayed frames enter history; previews, discarded plans and failed frames do not. Feedback influences future proposals, not model training.
 
-They do not tell us everything. A local-area temperature estimate does not establish an indoor measurement. Date and latitude can suggest season, but a tropical location should not be assigned a temperate autumn aesthetic merely because it is October. Time and date alone do not justify inventing rain, a festival or a particular moon phase.
+The director sees a compact packet, not all past pictures or an indefinite chat transcript. This keeps prompts manageable and reduces repeated combinations. Memory is not intended to be deleted after every image: doing so would lose preferences and repetition signals. It should also not grow forever.
 
-Good reasoning uses what is known, makes restrained inferences and avoids filling gaps with confident fiction.
+Every image should feel distinct in subject, activity, view and composition. Absolute uniqueness across all generated pictures cannot be guaranteed by prompt memory, hashes or sampling. More theme ingredients, better semantic/pixel comparisons and measured long-run diversity are possible later improvements. No system should claim it has proved infinite creativity after a short test.
 
-### Minimal overlays
+### Accounts, jobs and billing foundations
 
-Clock and temperature are reliable information the display can offer without becoming a dashboard. Render them through application code, independently of the artwork. A generated clock face or temperature label can be wrong and becomes stale immediately.
+Implemented: email/password accounts, opaque server sessions, private profiles/memory/library/favourites, one-use verification/reset links, account deletion, durable D1 jobs, Workflow execution, customer allowances and a separate operating ledger. Provider keys are never customer onboarding.
 
-Style labels, scene titles, preview indicators, progress counters and reasoning explanations compete with the atmosphere. Diagnostics may remain in developer tools, but they should not become permanent furniture on the user's display.
+Stripe Checkout/Portal and signed webhook processing are implemented. Access derives from server subscription state; checkout redirects and browser plan fields cannot grant it. Reconciliation reads current Stripe state rather than assuming event arrival order. Real sandbox lifecycle qualification is still required, including refund/dispute object shapes and manual review recovery.
 
-### A heartbeat rather than a fixed slideshow
+Resend delivery is implemented but real sender verification and inbox delivery remain operator setup. Local development explicitly bypasses verification only on HTTP loopback; that is not acceptable production authentication behaviour.
 
-A slideshow advances because a timer elapsed. Heartbeat should respond because the environment or temporal story justifies a change.
+### Playback and night comfort
 
-The heartbeat has three broad outcomes:
+Preparation runs in the background while the current picture remains. New images are decoded before crossfade; hidden tabs and pause defer display. Server night-JPEG checks examine wide, portrait and full-frame samples, and the client checks its displayed crop. These checks enforce provisional pixel-brightness limits, not artistic quality or a guarantee about physical monitor brightness.
 
-| Outcome | Appropriate situation | Intended response |
+A real too-bright pencil-night generation was rejected during development; stronger night instructions and regression fixtures now cover it. Another real night image passed. These are local provider/storage tests, not an unattended browser-night qualification.
+
+A follow-up found that generation cooldown and queue polling shared a clock, which could delay a ready picture for an hour. Already-funded jobs now poll independently every five seconds, even at capacity. The active tab retains a recovery ID in memory when local storage is blocked. Recovery across a reload still needs persistent browser storage. An interrupted provider call can remain spent against the operating budget; exactly-once external inference is not guaranteed.
+
+### Native Windows development
+
+An unsigned companion can pair to the account, retrieve private artwork, cache it, explicitly apply/restore wallpaper and request optional automatic updates. Credentials use current-user DPAPI locally and scoped/revocable server tokens. A `.scr` executable implements configuration, fullscreen and preview invocation modes.
+
+Compile/self-tests passed. Actual OS wallpaper behaviour, multi-monitor/mixed-DPI, screensaver preview/input/lock, sleep/wake and overnight use have not been qualified. Previous wallpaper slideshow restoration is not implemented. There is no installer, release signature, startup registration or claimed production desktop support.
+
+## Design direction and the reasoning behind it
+
+The user rejected the earlier forest/cream generic landing and selected a dark, glass-organism direction, combined with the third concept's minimalism. The revised target is [the combined concept](docs/design/heartbeat-target.png).
+
+The new presentation uses a physically rendered glass loop as the visual metaphor for a pulse, a navy/coral palette, bold typography, sparse navigation and a single direct invitation. Open ivory sections create a calmer editorial rhythm. Sign-in and the studio share the typography and interaction language; the private artwork remains the main object of attention.
+
+The reference sites were requested for their feel and behaviour, not as assets to copy. Public source inspection found scroll-led WebGL/showroom and pointer-driven image treatments at Shift, and immersive spatial/WebGL presentation at 3D Discovery. See [reference notes](docs/design-reference-notes.md) for evidence and limits. No live visual browser capture was possible, and original design work was explicitly authorized instead.
+
+The implementation currently uses text-free generated raster assets plus limited transforms for breathing/parallax, not a real-time deforming 3D organism. Native scrolling, no forced loader, reduced-motion support and hidden/offscreen pausing keep it simpler and more accessible. Moving to a shader/3D scene is a possible enhancement after performance and user value are measured. A landing effect must not dictate the ambient display's resource use.
+
+Motion is part of presentation, not the definition of intelligence. A picture that responds meaningfully to a rainy evening is more valuable than a continuously moving scene that ignores the environment.
+
+## Why this technical stack
+
+| Choice | Why | Constraint to qualify |
 | --- | --- | --- |
-| Hold | Conditions and story remain meaningfully stable. | Keep the current frame and its gentle motion. |
-| Animate | A small shift can be expressed without new scene content. | Adjust restrained lighting, movement or an appropriate lightweight effect. |
-| Reimagine | The next state needs visible semantic change. | Direct and generate a fresh frame in the background. |
+| React + TypeScript | Existing implementation, reusable account/player components and explicit data contracts | Build/typing does not verify rendered UX |
+| Vinext + Vite with App Router conventions | Retains the existing Worker-capable runtime and routes | Framework remains beta; independent production deployment needs qualification |
+| Local creative rules | Immediate free fallback, deterministic tests and no required inference for stable conditions | Six SVG scene families are a fallback, not unlimited AI artwork |
+| Cloudflare runtime adapters | Server-owned reasoning/image calls near the existing D1/R2 system | Model access, output reliability, cost and CPU limits must be measured |
+| D1/SQLite | Durable ownership, atomic reservation/accounting and recoverable job state | Migrations, backups, concurrency and retention need production operations |
+| Private R2 | Keep large image bytes outside job-step results and account data rows | Delivery, deletion and storage costs need monitoring |
+| Cloudflare Workflows | Background work survives a browser closing; explicit recovery/re-entry rules | Local emulator success does not prove hosted CPU/memory suitability |
+| Hosted Stripe billing | Keep card handling in Stripe and derive access from verified server events | Actual sandbox purchase/renewal/failure/cancellation remains untested |
+| Resend | Bounded transactional verification/reset delivery adapter | Verified domain and real mailbox delivery are not yet configured |
+| WinForms companion | Small native Windows build using the existing .NET Framework compiler and OS APIs | Signing, installer and native lifecycle tests remain |
 
-The target cadence is approximately ten minutes, not a biological pulse animation. The relationship between the local environment and the world's mood is what gives the product its heartbeat.
+This does not lock the product permanently to a model or vendor. A smaller runtime director should be compared on actual structured-output reliability, context fit and cost. The current verified configuration is not evidence that the cheapest possible agent has been selected.
 
-### Continuity without captivity
+## Economics and higher tiers
 
-The original implementation preserves a camera, a room, recurring objects and the same sleeping cat very aggressively. That was useful for a controlled reference-editing experiment. It became a poor creative default when it prevented anything genuinely new from happening.
+Draft settings are trial three pictures lifetime, Studio 120/billing month and Atelier 360/billing month, with minimum new-generation intervals of 60/30/10 minutes. These are provisional. Final prices, credits, upgrade policy and spending ceiling require approval after measurement.
 
-The next memory design should distinguish:
+Customer pictures and provider attempts are different. Failed/HOLD work does not consume a customer picture credit, but still costs an operating attempt. Successful images count even after routine storage expiry. The local shared three-attempt daily safeguard is not a subscription model and is not the provider's own quota.
 
-- **Lasting identity:** aesthetic, colour language, atmosphere and selected recurring themes.
-- **Evolving state:** lighting, activity, temperature cues, objects in use and consequences of recent events.
-- **Creative freedom:** a different view, new activity or subject, or a new chapter that still feels part of the same experience.
+Paid tiers currently share models. The longer-term premium idea remains: more reasoning time, richer creative context, better detail and potentially different output quality. It needs a real implementation and evaluations before being sold as a distinction. No unlimited expensive generation is promised.
 
-A new image should have a reason to exist. Preserving the exact room forever is not the definition of continuity, and replacing it with unrelated images is not meaningful evolution either.
+Measure average/heavy use, failures, multiple displays, reasoning, images, weather licensing, image delivery/storage, payment fees, tax and support before choosing prices. Around $99/year was an earlier hypothesis, not a current offer; the implemented billing catalog is monthly for now.
 
-The sleeping cat is a test asset, not the product's permanent subject. `Cute anime` is an inherited prototype preference, not a justified badge or a required default identity.
+## Completed evidence and explicit blockers
 
-### Software before hardware
+Automated checks cover real SQLite transactions, mocked external integrations, actual React lifecycle/interaction under a simulated DOM, capacity/quota isolation, queue recovery, night JPEG validation and accelerated policy/playback studies. Selected local HTTP account/weather routes and real Cloudflare inference/storage have been exercised.
 
-A browser-based experience is the fastest way to investigate the atmospheric value across screens people already own: laptops, monitors, tablets, TVs and projectors where browser capabilities permit it.
+**Visual QA is blocked:** no controllable browser or native surface was exposed. The target and generated image assets were inspected, but the rendered app could not be captured at matching desktop/mobile viewports. [design-qa.md](design-qa.md) must remain blocked until a real comparison is possible. Tests and source inspection cannot replace it.
 
-Hardware introduces sourcing, certification, support, returns and inventory before the experience has been validated. Dedicated frames can come later if people repeatedly choose to keep the software running.
+**External integration setup is incomplete:** real email sender/delivery, Stripe sandbox lifecycle, hosted resources/domain/secrets and native OS qualification need operator access or human testing. No production payment, paid infrastructure purchase or public deployment was performed.
 
-### Browser ambient mode before native OS integration
+## Remaining work, in order
 
-The first delivery is an immersive browser display. Fullscreen presentation, hidden controls and best-effort wake lock support that use case.
+1. Open the redesigned app in real desktop/mobile browsers. Compare against the selected target, check font loading, image crops, text contrast, navigation, touch/keyboard, motion preferences and performance. Fix findings before calling visual QA passed.
+2. Qualify more real artwork over day/night/weather changes, including a multi-hour unattended session, offline/hidden return, stable holds and meaningful variety. Measure why a picture was appropriate and whether people keep the display running.
+3. Configure HTTPS production-mode staging with a verified email sender, then test verification/reset delivery, replay/expiry, two-account isolation and deletion against real services.
+4. Configure Stripe sandbox Prices/Portal/webhooks; test purchase, decline/authentication, duplicate clicks, plan changes/proration, renewals, failed payments/recovery, cancellation, retries and refund/dispute review. Fix actual provider-contract gaps before live billing.
+5. Provision isolated hosted D1/R2/Workflow resources, migrations and server secrets. Measure CPU/memory and concurrent requests; approve a suitable budget rather than assuming free-tier suitability.
+6. Complete scheduled cleanup, periodic billing reconciliation, observability, cost alerts, backups/restore and support/admin review tools. Review authentication/abuse controls independently.
+7. Qualify Windows apply/restore, monitors/DPI, preview/input/lock and sleep/wake. Decide slideshow support, then signing, installer and uninstall/distribution.
+8. Finalize prices, allowance/cadence rules, public operator/support identity, privacy/retention/refund/cancellation terms and appropriate tax/licensing review. Run a small private beta before a separate live-payment/release decision.
+9. Add deeper premium reasoning, richer theme nodes and intelligent long-run novelty checks only after core quality, costs and retention are convincing.
 
-A native screensaver that activates automatically when a computer is idle is a separate integration. It requires platform-specific work, installation and lifecycle testing. A fullscreen web page should not be described as having completed that native behaviour.
+## What the operator must supply
 
-## What the reasoning should do
+The operator chooses an application address, authenticates hosting accounts, verifies a sending domain, creates Stripe sandbox products/Prices and eventually completes live business/payout setup. Secrets are entered locally or in server secret storage, not in chat or frontend code. The operator also approves prices/spending and performs the real browser/Windows/overnight experience tests that were unavailable to the build environment.
 
-The director should ask what the scene ought to communicate given the supplied context and its recent history. It should produce a small, concrete plan that an image generator can follow.
+Technical deployment/configuration work can be assisted; creating/verifying external accounts, accepting costs and approving public commercial terms cannot be assumed from a successful code build. GitHub source publication does not itself deploy the app or activate billing.
 
-For example, a warm afternoon could invite an airy, unhurried scene with daylight and activity appropriate to the established aesthetic. A colder evening could invite shelter, warmer interior light, quieter activity or heavier clothing where people are present. A date can inform seasonal colour and length of day without requiring a holiday or news lookup.
+## Future horizons and boundaries
 
-There should be no universal rule such as `12°C = blue bedroom` or `night = sleeping cat`. The same signals can support different beautiful interpretations. The system should choose coherently and avoid exhausting a small set of presets.
+Potential surfaces include phones/tablets, TVs/projectors, digital frames and eventually commercial installations. Hardware, fleet management, business signage and advanced event/news awareness remain deferred. Opt-in seasonal/cultural context must be appropriate and restrained. Civic/political cues should not promote candidates or present outcomes as good or bad.
 
-A useful structured direction includes:
-
-1. A hold, animate or reimagine decision and a short reason.
-2. The intended atmosphere and next scene state.
-3. The meaningful visual changes.
-4. What must remain recognisable.
-5. A prompt grounded in the actual previous image and permitted context.
-6. A memory update that becomes history only after successful display.
-
-Structured output helps validation and debugging. It does not itself prove that the reasoning or generated art is good.
-
-## The complete first-version loop
-
-At any point there should be a current frame. A future frame can be prepared independently.
-
-1. Resolve the selected city and local timezone.
-2. Collect fresh local-area temperature and derive local time/date.
-3. Load the actual current frame, relevant references and bounded memory.
-4. Evaluate whether a new visual state would add meaningful value.
-5. If holding, keep the world running and schedule the next check.
-6. If adjusting, apply an appropriate lightweight change without a generation call.
-7. If reimagining, create structured direction and generate in the background.
-8. Check format, dimensions, decodability and eventually semantic/continuity quality.
-9. Prepare the candidate without clearing the current artwork.
-10. Commit and transition when ready at the intended heartbeat. If late, keep the old frame until ready.
-11. Record only what was actually displayed and begin preparing the next justified state.
-
-An expensive call may fail, take longer than expected or return an unsuitable image. These outcomes must not become a loading screen in the room.
-
-## Architecture choices and tradeoffs
-
-| Choice | Why it was used | Tradeoff or next action |
-| --- | --- | --- |
-| React and TypeScript | Manage the player, controls and typed context/frame state in one web application. | A browser UI can grow too complex; simplify the visible product aggressively. |
-| Vinext/Vite and a Worker runtime | Reuse the existing Sites-compatible application and server routes. | Portability and platform-specific build behaviour need independent verification. |
-| D1 persistence | Store current/pending frames, context, version guards, attempts and memory durably. | Current ownership is cookie-scoped; account/device sharing is not yet a complete product model. |
-| R2 artwork storage | Keep generated images server-side and separate image bytes from scene metadata. | Retention, cleanup, export and storage costs still need policies. |
-| Rule-based environmental interpreter | Provide a transparent baseline and test the significance of changes cheaply. | It cannot substitute for rich AI direction or be marketed as an LLM. |
-| Vision-capable AI director | Let scene planning refer to what the user actually sees, not only metadata. | Credentialed operation, latency, quality and cost remain unverified. |
-| Reference-image editing | Reduce identity drift across related frames. | Too much preservation freezes the experience; allow deliberate creative evolution. |
-| Structured world memory | Prevent constant resets and keep recent consequences available to the director. | The fixed world bible must be relaxed to match the latest continuity requirement. |
-| Current/prepared frame slots | Hide generation latency and verify a candidate before replacement. | Stale candidates, interrupted requests and multiple tabs require careful coordination. |
-| Foreground scheduling | Make an early prototype operate while its browser display is open. | Production generation needs a durable queue and recovery beyond one HTTP request. |
-| Code-rendered overlays | Keep time and temperature accurate and independent of generated art. | Their visibility and layout must remain restrained across devices. |
-
-These choices describe the current source and a likely evolution, not a claim that every component is already production-ready. Providers and models can change if evidence supports it; the user experience is the stable requirement.
-
-## Immediate implementation order
-
-### 1. Correct the opening and display
-
-Replace the current setup with the brand and one city input. Remove the style badge, extra questionnaires, scene captions and demo links from the main experience. Keep only the intended overlays while idle. Preserve a quiet way to change city and control fullscreen.
-
-### 2. Correct the creative contract
-
-Revise the director prompt, schema and memory so an evolving world can contain new activity, subjects and views. Remove the permanent dependence on the reference cat scene. Make time, temperature and date sufficient inputs for the default experience.
-
-### 3. Complete actual generation
-
-Configure a provider securely, check model/account access, and run a real city/context-to-directed-image-to-display sequence. Measure the result rather than treating an implemented API request as completion.
-
-### 4. Verify autonomous operation
-
-Leave the display running through repeated heartbeats. Include stable periods, a significant temperature change, time-of-day transition, a failed generation, missing data and a hidden-tab return. Confirm no blank frame, duplicate consumption or broken local clock.
-
-### 5. Build production reliability
-
-Move paid work into a durable queue, define retry rules and ownership of attempts, handle interrupted requests, cancel stale work and enforce budgets across active displays. Establish storage retention and observability without leaking credentials or private context.
-
-### 6. Validate the atmosphere with people
-
-Ask people to leave it in their room, rather than just rate a screenshot. Observe whether they keep it running, return to it, dislike distractions or feel the imagery is repetitive. Improve the core before adding unrelated surfaces and features.
-
-## First-version acceptance criteria
-
-- A new user enters only a city and reaches the ambient display.
-- The resolved timezone is correct, including local midnight and daylight saving changes.
-- Time and outdoor temperature are accurate; unavailable temperature is not fabricated.
-- Date influences reasoning without forcing extra permanent UI.
-- At least one real AI-generated scene visibly reflects context.
-- Multiple subsequent scenes introduce meaningful change while remaining coherent.
-- Stable conditions can hold a scene without wasting an expensive generation.
-- Artwork stays visible during preparation, errors and slow responses.
-- The next image is checked/decoded before a seamless replacement.
-- The experience continues autonomously while the supported display mode is active.
-- Controls disappear during inactivity and remain accessible when requested.
-- A multi-hour session and the chosen devices are actually tested before claiming support.
-
-The existing simulated study is useful evidence about reference-image continuity and playback. It does not satisfy the real-generation or multi-hour acceptance criteria.
-
-## What is deliberately deferred
-
-Do not begin with hardware, advanced news intelligence, a large style picker, a weather dashboard, payments or commercial signage management. Do not create more demo routes as a substitute for finishing the main loop.
-
-The current code contains laboratory and study routes because they helped explore behaviour. The product should not require users to visit them to experience its intelligence.
-
-## Expansion after the core works
-
-### Richer environmental context
-
-Weather condition, feels-like temperature, sunrise/sunset, clouds, precipitation and wind may make interpretation more faithful. Some of this data is already collected by the prototype. Collecting it is different from proving its creative value.
-
-### Optional visual direction
-
-A future advanced preference could offer photorealistic, cinematic, anime, cute anime, manga, comic, pencil, ink, watercolour, oil, pixel art, collage, abstract, dark fantasy, minimalist, retro, cyberpunk, children's-book illustration or custom direction. This is an optional later layer, not a return to mandatory first-run questions.
-
-Style determines how the world is represented. Environmental and temporal reasoning determines what happens within it.
-
-### Temporal storytelling
-
-Memory can support believable consequences: an activity begins, a scene becomes busier, daylight fades, people leave, and the environment settles. Recurring themes or characters may return without becoming an unchanging composition.
-
-### World-awareness controls
-
-Later, users could opt into sensitivity to culture, sport, local events, holidays, news or civic context. Deeper reasoning might be used occasionally, such as approximately once per ten meaningful generations, if its value and cost justify it.
-
-Any event influence should be subtle and verified. Sensitive categories should be optional. Civic atmosphere must remain neutral: no candidate endorsements, party promotion, political persuasion or visual coding of political outcomes as good or bad. The display must not become a news feed.
-
-## Economics: AI Moments
-
-An **AI Moment** is a meaningful expensive reimagination of the visual world. It is a product concept for budgeting value, not a requirement to expose tokens or technical image credits.
-
-The proposed commercial direction is an annual subscription with a defined allowance of Moments, potentially with larger tiers or optional packs. Around $99 per year was an early hypothesis, not a validated price. Premium reasoning could be metered separately if it creates enough additional value.
-
-Do not promise unlimited expensive cloud generation. A ten-minute decision loop can run often while generating much less frequently. Economics should be based on observed usage:
-
-`annual contribution = subscription revenue - generation - reasoning - weather/data - storage/delivery - other variable service costs`
-
-Measure both average and heavy usage, failed attempts, multiple displays, image quality settings and support costs. Provider prices and access conditions must be verified at the time of a commercial decision. The current 24-attempt limit is a prototype guardrail, not the business model.
-
-## Surfaces and company direction
-
-| Horizon | Potential surfaces | What must be true first |
-| --- | --- | --- |
-| Consumer software | Laptops, desktop monitors, tablets, browser-capable TVs and projectors. | People choose to keep the core experience running. |
-| Dedicated displays | Desk displays, digital art frames, portrait/landscape posters and clock/display hybrids. | Stable software, device support and unit economics. |
-| Business spaces | Cafés, hotels, offices, restaurants, spas, clinics, gyms, co-working and retail. | Reliable unattended operation and suitable content controls. |
-| Large installations | Malls, airports, events, public installations, signage and billboards. | Fleet control, editorial governance, monitoring and commercial contracts. |
-
-The common asset should be a context engine that can interpret the world and direct suitable visual atmosphere for different surfaces. Surface expansion should follow demonstrated value rather than precede it.
-
-## Open product questions
-
-1. How much visible change is enough to feel alive without becoming distracting?
-2. When should the director preserve a place, shift viewpoint, introduce a subject or begin a new chapter?
-3. How much animation adds value compared with a still image and gentle motion?
-4. What generation allowance can support a compelling annual subscription?
-5. What evidence shows people want this beyond the novelty of the first session?
-6. Which display category has the strongest repeat use before hardware is considered?
-
-The next milestone should answer these through a real city-only ambient experience and sustained use. Additional interface complexity is not evidence of progress toward that goal.
+The central asset is a creative context engine that understands a moment and directs suitable art for a surface. The brand can feel alive while the application remains quiet. Additional dashboards, routes or animations are not evidence that this core value has been achieved.

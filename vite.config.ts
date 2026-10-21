@@ -15,6 +15,7 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
+  workflows: [{ binding: 'ARTWORK_WORKFLOW', name: 'heartbeat-generation', class_name: 'HeartbeatWorkflow' }],
   main: "./build/sites-worker.ts",
   compatibility_flags: ["nodejs_compat"],
   d1_databases: d1

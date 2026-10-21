@@ -1,202 +1,162 @@
-# Heartbeat
+﻿# Heartbeat
 
-**Turn any screen into a living, context-aware piece of art.**
+**A screen with a pulse.** Heartbeat is a context-aware ambient-art application: choose a city, then let original artwork respond to local time, real outdoor weather and the season. The core experience is artwork, a clock and temperature, with controls that recede while you leave it running.
 
-Heartbeat is an experimental ambient display that interprets local time, outdoor temperature and date to create atmosphere. The intended experience is simple: type a city, enter the display, and let a visual world evolve alongside the day.
+**Status — 21 October 2026:** working local account application and unsigned Windows companion. Cloudflare generation has been exercised with real inference. Stripe and email integrations are implemented but not activated or tested end to end with their real services. Hosted production, real-browser visual QA and hands-on Windows qualification remain outstanding. This is not a public commercial release.
 
-**Status: working prototype, not the completed product.** The environmental interpreter, browser player and continuity study work. The live AI director and image-generation path are implemented but have not been verified with a configured generation credential. The current main display holds a reference image while adjusting light and motion; it does not yet create fresh artwork autonomously.
+Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
 
-Read [PROJECT_VISION.md](PROJECT_VISION.md) for the reasoning behind the product, architecture choices, full scope and long-term direction.
+## Start locally
 
-## The intended experience
+This checkout is already prepared. Run:
 
-1. Open Heartbeat and see its name and one city input.
-2. Enter a city and resolve its correct location and timezone.
-3. Enter an immersive display with artwork, accurate time and outdoor temperature.
-4. Let the system reason about time, temperature and date in the background.
-5. When a meaningful change warrants it, prepare new artwork without interrupting the current frame.
-6. Replace the frame with a gentle transition. Continue without user input.
-
-Date is a reasoning input; the latest product direction keeps only time and temperature visible by default. Name, style and vibe questions, style labels and diagnostic panels are not part of the target opening or ambient display.
-
-**The repository still contains the older interface.** This documentation records the revised direction; it does not imply that the city-only redesign has been implemented.
-
-## What exists today
-
-| Area | Implemented behaviour | Limit or remaining work |
-| --- | --- | --- |
-| Location | City search resolves coordinates, country and an IANA timezone. | Simplify the opening to the single city input. |
-| Time and date | Local formatting uses `Intl`; a server-time offset is used when available. | The current UI displays date and extra labels that must be simplified. |
-| Temperature | Open-Meteo supplies local-area outdoor temperature. Server collection has a browser fallback. | It is not an indoor sensor reading. Stale or missing observations must stay visibly unavailable. |
-| Context interpretation | Rule-based `HOLD`, `ANIMATE` and `REIMAGINE` decisions use time, temperature, weather, season and existing preference fields. | This baseline is not an LLM. The next default must centre time, temperature and date, without depending on extra setup. |
-| Visual response | Brightness, colour, lamp-like warmth and movement respond to context on existing artwork. | Effects cannot replace real semantic scene changes. |
-| Frame playback | Current and prepared frame slots, browser image decoding, crossfades, pause/resume and overdue-frame handling. | Cloud-generated playback is implemented but unverified end to end. |
-| Persistence | D1 stores profile, displayed/pending frames, pulse history, generation attempts and world memory. | Production recovery, multi-device account ownership and a durable generation queue remain future work. |
-| AI direction | A vision-capable director request receives current/canonical images, context, a world identity and recent displayed events. Structured instructions are validated. | Requires a server-side generation credential; no credentialed provider run has been completed. |
-| Image generation | Initial generation, subsequent reference-image editing, image checks and R2 storage. | Implemented integration, not a verified live service. |
-| Continuity study | `/story` plays six simulated beats through three reference-edited scenes, with stable holds and decoded transitions. | Uses pre-generated artwork and simulated London conditions. It is not live generation. |
-| Environmental laboratory | `/pulse` lets a developer simulate conditions using the rule-based interpreter. | Diagnostic surface, not the intended product flow. |
-| Screensaver behaviour | Fullscreen control, gently moving artwork, fading controls and best-effort screen wake lock. | Browser ambient mode only. Native OS idle activation and a fully hidden ambient UI are not completed. |
-
-## Why the current cat does not keep changing
-
-The main display uses a pre-generated London window scene as a reference. With live generation disconnected, the server deliberately holds that scene. The clock and temperature continue updating, and atmospheric effects can change, but the subject is not being regenerated.
-
-The separate study demonstrates continuity using a warm morning with the lamp off, a rainy evening with warm lamplight, and a cold night with the same cat under the existing blanket. Those images were generated ahead of time. They demonstrate a visual relationship, not autonomous context-aware synthesis.
-
-The sleeping cat, room and `Cute anime` label are prototype choices, not permanent product requirements. The next iteration must permit new subjects, activities and views while preserving a coherent aesthetic. Keeping the exact room forever is an overconstraint in the current director and memory model.
-
-## Development progress
-
-| Milestone | What was built | What it established |
-| --- | --- | --- |
-| Initial ambient prototype | Browser display, location search, accurate overlays, reference artwork, preferences and persistent current/pending frames. | A usable display shell; it did not establish the core intelligence. |
-| Environmental heartbeat | Rule-based interpretation, context freshness checks, solar phases, mood/effects and saved recent observations. Timer-driven reference rotation was removed. | Meaningful changes can be distinguished from stable conditions. |
-| Continuity proof | Reference-edited morning and cold-night assets, a six-beat study, structured scene directions, image-aware director inputs and committed-frame memory. | Related images can evolve visibly and transition without a loading screen in the controlled study. |
-| Product correction | Agreed city-only opening, minimal overlays, time/temperature/date-led reasoning and less restrictive continuity. | A documented implementation target. These interface and creative-direction changes are still pending. |
-
-This GitHub snapshot is based on the Site source commit `eab1aa8b9dce64335d471cebdb6d3ac41ca17a67`. The application source is preserved; the README, vision document and export ignore rules document the project for handoff. No product features were implemented as part of this documentation export.
-
-## Architecture
-
-The current implementation uses React 19, TypeScript, Vinext/Vite, Tailwind CSS, Radix/Base UI components, a Cloudflare Worker, D1 and R2.
-
-```mermaid
-flowchart TD
-    A[City and local clock] --> C[Context interpreter]
-    B[Outdoor observation] --> C
-    C --> D{Meaningful change?}
-    D -->|Hold or animate| E[Keep current artwork]
-    D -->|Reimagine| F[AI director and references]
-    M[Committed world memory] --> F
-    F --> G[Generate, validate and prepare]
-    G --> H[Decode and crossfade]
-    H --> M
-    E --> C
-    H --> C
+```powershell
+npm run dev
 ```
 
-The diagram describes the intended connected path. Today the context interpreter and reference display run; the AI branch is gated on a configured service and is not verified end to end.
+Open `http://localhost:5173/`. Create an account with a password of at least 12 characters, choose your city in the studio, optionally adjust Atmosphere, and open the display. In explicit development mode, email verification is bypassed only on HTTP loopback. Customers do not enter provider tokens or the old shared display key.
 
-### Heartbeat and cost control
+For a fresh clone, use Node 22.13+ and the pinned pnpm version in `package.json`:
 
-- Local overlays update independently of image generation.
-- Weather context is refreshed approximately every five minutes while the page runs.
-- Cheap atmospheric interpretation runs approximately every minute.
-- Full reimagining is considered on a roughly ten-minute cadence, with advance preparation when appropriate.
-- A heartbeat is a decision opportunity, not a promise of a new paid image.
-- The live path applies a prototype limit of 24 generation-path attempts per UTC day per world. Failed requests and director-only holds after acquiring an attempt can consume this limit. It is not a subscription allowance.
-- A successful live frame increments `moments` only when committed for display.
-
-### World memory
-
-`lib/story.ts` defines a structured world identity, current scene state and up to eight committed frame events. The initial identity is retained, and subsequent frames record changes only when committed for display. Duplicate display requests are guarded, and version checks reject conflicting updates.
-
-This protects continuity, but the existing fixed camera/geometry/inhabitant constraints are too restrictive for the revised vision. Future memory must distinguish lasting aesthetic identity from details that may change naturally, including subject, activity, composition and viewpoint.
-
-### Reliability boundaries
-
-The current browser drives scheduling. Hidden tabs defer work; returning can show an overdue prepared frame without replaying every missed heartbeat. Pausing stops scene progression. Current artwork stays visible during preparation or failure.
-
-The live preparation route uses a five-minute lease, version guards and a generation-attempt cap. It still depends on a foreground HTTP request. It has not been moved to a durable background queue. A browser closing or losing its connection is not yet a fully recovered production workflow.
-
-Before storage, WebP checks cover container integrity, size, static-image status and landscape dimensions. The player decodes a candidate image before replacement. These checks do not establish artistic quality, factual interpretation or visual continuity; automated semantic checks and human quality evaluation remain work to do.
-
-## Routes and source map
-
-| Path | Purpose |
-| --- | --- |
-| `app/heartbeat.tsx`, `app/ambient.css` | Existing opening, display controls, overlays, atmosphere and player. |
-| `lib/context.ts` | City resolution and local outdoor observations. |
-| `lib/pulse.ts` | Rule-based environmental interpretation, significance and recent pulse events. |
-| `lib/playback.ts` | Playback scheduling decisions. |
-| `lib/world.ts` | Domain types, default profile and reference artwork definitions. |
-| `lib/story.ts` | Structured directions, world identity and committed-frame memory. |
-| `lib/generation.ts` | Optional AI director, image generation/editing, usage recording and storage. |
-| `lib/image-check.ts` | WebP structure and dimension validation. |
-| `lib/server.ts` | Session cookie, profile validation and D1 access. |
-| `app/api/world` | Read or save the cookie-scoped world. |
-| `app/api/context`, `app/api/locations` | Local context and city search. |
-| `app/api/pulse` | Persist environmental observations and pulse history. |
-| `app/api/heartbeat` | Consider and prepare the next live frame. |
-| `app/api/display` | Commit a prepared frame with version/idempotency guards. |
-| `app/api/art/[id]` | Read generated artwork within the current cookie-scoped world. |
-| `app/story`, `lib/continuity.ts` | Pre-generated, simulated continuity study. |
-| `app/pulse` | Isolated environmental test laboratory. |
-| `db/schema.ts`, `drizzle/` | Storage schema and ordered migrations. |
-| `public/art/` | Five bundled generated reference/study images. |
-| `docs/continuity-prompts.json` | Exact prompts for the newer reference edits. |
-| `build/`, `scripts/`, `vendor/` | Retained runtime/build scaffolding and bundled notices. |
-
-## Running and checking the source
-
-### Requirements
-
-- Node.js satisfying the package engine (`>=22.13.0`); Node 22.18+ or a compatible newer release is recommended for the native TypeScript stripping used by the domain checks.
-- The package-manager version pinned by `package.json`: pnpm `11.25.0`.
-- A runtime that supports Cloudflare Worker bindings for D1 (`DB`) and R2 (`BUCKET`). This is not a frontend-only static project.
-
-### Local development
-
-From a clone of this repository, install using the checked-in lockfile:
-
-```bash
+```powershell
 pnpm install --frozen-lockfile
-pnpm dev
+npm run build
+npm run ai:prepare
+npm run product:prepare
+npm run dev
 ```
 
-A clean clone uses the portable execution profile, whose development port is `5173`. The configuration provides local Worker bindings; local database state starts empty. Before using persistent API routes, apply the existing SQL migrations once, in filename order, to the local `DB` binding using the D1 tooling for that runtime. Do not rerun the `ALTER TABLE` migrations against an already migrated database. `pnpm db:generate` generates new migrations from schema changes; it does not apply existing migrations.
+The preparation scripts create the active local AI/account tables and an ignored `.dev.vars`. They do not deploy or provision cloud resources. Existing credentials, pictures, attempt history and operating limits are preserved. Legacy world/story routes require their earlier migrations separately; they are not the current customer flow. Independent clean-clone installation still needs qualification on another machine.
 
-The hosted prototype was validated in the managed Sites environment. Clean-clone installation, cross-platform development and independent Cloudflare deployment have not been requalified during this export. If using the retained Linux installer, `pnpm run install:ci` additionally requires Bash, `flock` and GNU `timeout`.
+## Routes
 
-### Checks
-
-```bash
-node --experimental-strip-types tests/world.mjs
-node --experimental-strip-types tests/pulse.mjs
-node --experimental-strip-types tests/story.mjs
-pnpm exec tsc --noEmit
-pnpm build
-```
-
-The three domain check scripts and TypeScript are rechecked for this handoff. The last application build and browser study verification passed during the October 8 implementation milestone. A fresh live-provider test, long soak test and native device qualification have not passed because they have not yet been completed.
-
-The tests cover timezone rollover/DST, playback policy, freshness, solar timing, temperature changes, weather families, hysteresis, hemisphere-aware seasons, stable holds, structured directions, bounded memory, identity retention and bundled WebP validation. Some legacy policy checks remain in `tests/world.mjs`; the active environmental interpretation lives in `lib/pulse.ts`.
-
-### Optional live generation configuration
-
-The current server expects:
-
-| Variable | Meaning |
+| Route | Current purpose |
 | --- | --- |
-| `OPENAI_API_KEY` | Server-only generation credential. Never commit or expose it to the browser. |
-| `HEARTBEAT_DIRECTOR_MODEL` | Director model identifier; current source fallback is `gpt-4.1-mini`. |
-| `HEARTBEAT_IMAGE_MODEL` | Image model identifier; current source fallback is `gpt-image-2`. |
+| `/` | Living-organism landing, atmosphere controls and illustrative art previews |
+| `/auth` | Registration, sign-in, verification and password reset |
+| `/app` | Personal studio, city/preferences, private collection, favourites, devices and billing |
+| `/display` | Account ambient player with real time/weather and generated-art playback |
+| `/pricing` | Trial and provisional memberships; no payment when billing is unconfigured |
+| `/desktop-guide` | Windows pairing/build instructions |
+| `/privacy`, `/terms` | Early-access information; operator policies still need finalization |
+| `/local-study` | Earlier free, city-only six-family SVG engine and optional local shared-key study |
+| `/prototype/` | Separate static SVG visual experiment, also available with `npm run prototype` |
 
-These are source defaults, not a claim about current model availability, pricing or account access. Verify the chosen models when activating the service. Configure secrets using the deployment runtime's secret mechanism. The source currently also requires enabling live mode in the existing preferences after the server reports availability; the revised city-only experience should handle this operationally rather than making generation setup a user onboarding choice.
+Older `/pulse`, `/story` and world APIs remain reference code. They are not the new onboarding or current provider configuration.
 
-No credential or private runtime data is included in this repository. Without the live connection, local clock/context and reference artwork can work, but autonomous fresh artwork cannot.
+## Implemented so far
 
-### Hosting
+- **Atmosphere engine:** city/timezone resolution, real Open-Meteo observations, server clock offset, freshness checks, weekday/season/solar context, explicit festive opt-in and local quiet-hour darkness. Missing temperature is shown as unavailable.
+- **Creative intelligence:** Cloudflare runtime director and image adapter, strict structured-output contracts, 93 theme ingredients, compatible sampling, bounded displayed-scene history, composition fingerprints and more/less feedback. New subjects and viewpoints are encouraged; absolute uniqueness is not guaranteed.
+- **Playback:** illustrated first frame, background preparation, decode-before-crossfade, pause/visibility handling, night crop checks, committed-history-only memory and private image retrieval. Failed work keeps the current picture.
+- **Accounts:** email/password authentication, salted PBKDF2 hashes, hashed opaque sessions, secure HTTPS cookies, bounded/rate-limited requests, verification and one-use reset links, sign-out and password-confirmed deletion. Password reset revokes existing sessions. OAuth is not implemented.
+- **Private ownership:** server preferences/memory, account-owned library and favourites, isolated image access, account switching and bounded retention. Up to 100 favourites are protected from routine expiry. The display opens from server preferences even if local storage is blocked; recovery across a reload still needs available storage.
+- **Durable generation:** Cloudflare Workflow binding, D1 jobs, unique account/request IDs, a permanent start gate and recovery polling. The client does not blindly repeat an ambiguous paid POST. Interrupted external work can still leave an operating attempt spent; there is no exactly-once provider guarantee.
+- **Billing integration:** hosted Stripe Checkout, customer-bound Portal, allowlisted monthly Prices, persistent checkout idempotency, signed raw-body webhooks, duplicate-event handling and current-state reconciliation under a per-customer lease. A browser success URL does not grant access. Refund/dispute handling and full lifecycle behaviour still require real Stripe sandbox testing.
+- **Windows development companion:** six-digit pairing, scoped/revocable device credentials, current-user DPAPI encryption, private downloads, explicit wallpaper apply/restore, per-monitor selection, optional automatic updates and cached `.scr` entry modes. It is unsigned, not an installer or qualified release.
 
-`.openai/hosting.json` retains the original Site identity and logical D1/R2 bindings. It is deployment metadata, not a credential. The existing hosted project uses the Sites workflow; copying this repository alone does not create resources or grant deployment access. Do not replace its project ID to publish over another Site. An independent hosting target requires its own runtime configuration and resources.
+## Why old pictures could remain
 
-This export does not redeploy or change the existing Site audience.
+There are three distinct cases:
 
-## What needs to happen next
+1. Landing artwork is an **illustrative preview**, not a live generation request. Its city/time/weather labels are examples. Clicking Rain, Sun or After hours changes the demonstration without spending inference.
+2. The current local operator cap is **three attempted preparations per UTC day**, shared across accounts. It is an application safeguard, not a Cloudflare free-tier quota or a customer's subscription allowance. It was not raised during the redesign. Failed/HOLD attempts can still spend this operating budget.
+3. A real playback bug allowed a server cooldown to postpone retrieval of an already-funded queued picture for an hour. Recovery now has its own five-second polling schedule, independent of new-generation cooldown/capacity. The open tab also retains its request ID in memory when storage is blocked. Regression tests cover both cases.
 
-1. Replace the opening with `heartbeat` and one city input, and remove style labels, extra setup and diagnostic links from the ambient experience.
-2. Make the display visually minimal: artwork, time and temperature, with controls/cursor hidden during inactivity.
-3. Revise the director and memory contract so time, temperature and date shape genuinely fresh subjects and activity without freezing the same room forever.
-4. Configure a generation service securely and verify the entire real-data-to-new-frame path.
-5. Run multiple consecutive autonomous heartbeats, including stable holds, preparation failures and recovery, with no loading gap.
-6. Move generation to a durable queue and verify long sessions, browser/device limits and costs before a public service.
-7. Test whether people choose to leave it running in their room. Treat retention and atmosphere as the first product evidence.
+The account display labels illustrated previews, originals and preparing work. Capacity status includes the reset time; exhausted customer allowance remains a different explanation. Existing artwork stays available when generation is paused.
 
-## Scope, economics and rights
+## Visual direction and why
 
-Hardware, advanced news intelligence, payments, subscriptions and business display management are future possibilities, not implemented features. An annual subscription and an allowance of **AI Moments** are hypotheses, not current offers. Ten-minute checks must not be sold as unlimited expensive image generation.
+The user chose the glass-organism concept with a more minimal layout. The implementation combines a navy/coral immersive hero, oversized self-hosted typography, a single primary invitation, subtle breathing/pointer response, open ivory editorial sections and an artwork-first studio. Four new text-free raster assets replace the old promotional demo pictures.
 
-Weather data is provided by [Open-Meteo](https://open-meteo.com/). Review the provider's current attribution, licensing and commercial-use terms before a commercial release. Local context is an outdoor estimate for the selected area, not an exact sensor reading from the user's room.
+Both requested sites were studied from their public HTML and selected public JavaScript. Shift uses a scroll-led WebGL showroom and pointer-driven image effects. 3D Discovery uses immersive spatial presentation and reduced-motion-aware WebGL components. Their implementation code and assets were not copied into Heartbeat. See [reference research and limitations](docs/design-reference-notes.md).
 
-Bundled artwork was AI-generated for prototype use. Keep the included third-party notices. No project-wide open-source license has been selected by this export; repository visibility does not itself grant an open-source license.
+The current organism is a **generated raster with lightweight transforms**, not a real-time 3D simulation. This keeps the initial implementation simpler and avoids making an unattended display depend on a heavy WebGL scene. Reduced-motion settings disable the effect; hidden/offscreen hero motion pauses. Real GPU, battery, layout and interaction quality still need browser/device measurement. A full interactive 3D layer is a possible later iteration, not a completed feature.
+
+The selected combined target is [docs/design/heartbeat-target.png](docs/design/heartbeat-target.png). [design-qa.md](design-qa.md) records the current browser-capture blocker. Build/DOM results do not establish visual fidelity.
+
+## Stack and ownership map
+
+| Layer | Choice and reason | Main locations |
+| --- | --- | --- |
+| UI | React, TypeScript, Vinext/Vite and compatible App Router conventions; keep the existing runtime and account flows | `app/`, `components/`, `app/product.css` |
+| Local creative loop | Rules plus bounded memory; instant free fallback and no mandatory model call for a stable hold | `lib/ambient-director.ts`, `lib/creative.ts`, `hooks/` |
+| Runtime AI | Cloudflare director/image REST adapters; credentials remain server-side | `lib/ai/`, `lib/director-contract.ts` |
+| Persistence | D1/SQLite for accounts, jobs and ledger; private R2 for JPEGs | `db/schema.ts`, `drizzle/`, `lib/product/` |
+| Jobs | Cloudflare Workflows, with explicit re-entry/recovery policy | `lib/product/jobs.ts`, `workflow.ts`, `build/sites-worker.ts` |
+| Billing/email | Stripe hosted billing and Resend delivery adapters | `lib/product/billing.ts`, `auth.ts` |
+| Windows | Native WinForms/.NET Framework companion and OS wallpaper APIs | `desktop/Heartbeat.cs`, `scripts/build-desktop.mjs` |
+
+Default configured AI models are recorded in `.env.example`; model access, costs and a genuinely cheaper director should be re-evaluated with measured quality. The legacy OpenAI world generator remains historical code, not the active customer generation path.
+
+## Plans and operating costs
+
+| Draft plan | Customer pictures | Minimum generation interval |
+| --- | --- | --- |
+| Trial | 3 lifetime | 60 minutes |
+| Studio | 120 per billing month | 30 minutes |
+| Atelier | 360 per billing month | 10 minutes |
+
+These are provisional settings in `lib/product/core.ts`, not approved commercial terms. Failed preparations and HOLDs do not consume customer picture credits; in-progress work reserves allowance and successful pictures still count after image expiry. All provider attempts remain accounted against the separate global operating cap.
+
+Both paid tiers currently use the same models. Premium deeper reasoning, richer context, higher-resolution output and distinct quality tiers are future work. No unlimited generation or higher-tier quality advantage is being claimed. Actual prices are read from configured Stripe Prices when billing is enabled; unconfigured plans remain unavailable.
+
+## Secrets and GitHub
+
+`.dev.vars`, `.env*` except `.env.example`, runtime databases, local tool state and `outputs/` are ignored. `.env.example` contains placeholders only. Customers receive account sessions; provider/email/Stripe credentials belong in runtime server secrets. Do not paste tokens into chat or put them into frontend code.
+
+Before committing, stage the intended files and run:
+
+```powershell
+npm run check:secrets
+```
+
+This checks the **exact Git index**, rejects private runtime/credential files, looks for known locally configured secret values and common credential/private-key formats, and reports file names without printing secrets. It is a useful guard, not a complete security audit. Never use `git add -f` on secret files. Rotate any credential that is ever exposed.
+
+## Verification and its limits
+
+Useful commands:
+
+```powershell
+npm run test:product
+npm run test:ai
+npm run test:ambient
+npm run test:creative
+npm run test:soak
+npm run test:prototype
+node --experimental-strip-types tests/night-quality.mjs
+pnpm exec tsc --noEmit
+npm run build
+npm run desktop:build
+```
+
+With the local dev server running, `npm run test:product:live` checks actual HTTP account/routes without inference, payments or email. `npm run test:live` checks real city/weather APIs and requires internet access. The explicit live-AI smoke script is separately opt-in and spends an operating attempt; normal tests use mocks.
+
+Account/billing tests use real SQLite with mocked external services. React DOM checks cover navigation, synchronized preview selectors, reduced motion, hidden-tab pausing, city/preferences, favourites, device pairing and blocked storage. Playback checks cover queued recovery under a one-hour cooldown/full capacity, lost responses, decoded acknowledgement and night rejection. The accelerated soak covers 3,535 decisions and 1,211 displayed moments across seven simulated weeks.
+
+Prior real Cloudflare tests exercised actual directing, generation and private retrieval. A too-bright pencil-night result prompted a server JPEG brightness guard across wide, portrait and full-frame crops; the subsequent night result passed. These were local Workflow-emulator runs, not hosted Workflow CPU qualification or actual browser display evidence.
+
+**Not verified:** rendered browser layout/fidelity, touch/mobile/mixed-DPI behaviour, real email delivery, real Stripe sandbox lifecycle, deployed Workflow CPU/memory, actual wallpaper restoration/screensaver lock handling, real overnight operation or sustained artistic variety. No controllable browser was exposed during the redesign. Passing tests/compiler/HTTP does not prove these outcomes.
+
+## What remains, blockers and manual steps
+
+| Next step | Who/what is needed |
+| --- | --- |
+| Visual QA | Browser access or human desktop/mobile captures; compare at the same viewport, fix typography/crops/contrast/interactions and assess frame rate/battery |
+| Email | Operator verifies a sending domain in Resend, sets sender/key; test verification/reset delivery and expired links on HTTPS production-mode staging |
+| Payments | Operator creates Stripe sandbox products/Prices and Portal configuration; set webhook secrets and test purchase, decline, duplicate click, renewal/failure, upgrade/downgrade, cancel, refund/dispute and retries |
+| Hosting | Choose target/domain, authenticate cloud account, provision isolated D1/R2/Workflow resources, apply migrations and secrets; qualify CPU/memory before selecting a paid plan |
+| Economics | Approve prices, allowances, cadence and spending ceiling using measured reasoning/image/storage/traffic costs; three shared attempts/day is not a public-service budget |
+| Operations | Implement scheduled cleanup, periodic billing reconciliation, monitoring/alerts, backup/restore drills and a support/admin review process |
+| Security | Independent auth/payment/ownership review, abuse/rate-limit hardening and provider/asset/data licensing review |
+| Windows | Human tests for apply/restore, multiple monitors, DPI, preview/input/lock/sleep; prior slideshow restore, signing, installer and uninstall still need work |
+| Product quality | Several real day/night sessions, diverse real images and a small private beta where people choose whether to keep it running |
+| Launch | Final operator/support identity, privacy/retention and refund/cancellation terms, applicable tax review, separate live Stripe configuration and explicit release decision |
+
+The detailed activation checklist is in [docs/product-build.md](docs/product-build.md). No real subscriptions were charged, no paid cloud resources were enabled, and no new public deployment was made by this local build. GitHub source publication is separate from deploying the application.
+
+## History, rights and attribution
+
+The earlier cat/room continuity study, six-family SVG experiment and old world/story routes are retained for reference. They are not promises of the new engine's visual range. See [creative planning](docs/creative-brain.md), [Step 2 tests](docs/step-2-testing.md) and [the earlier AI setup](docs/cloudflare-setup.md).
+
+Weather attribution: [Open-Meteo](https://open-meteo.com/). Its commercial licensing/attribution must be reviewed before selling the product. New promotional images and the design target were created with built-in Image Generation; provenance is in [docs/design/ASSETS.md](docs/design/ASSETS.md). Manrope and Barlow Condensed are self-hosted with their bundled OFL notices. Keep all existing third-party notices. No project-wide open-source license has been selected; repository visibility does not itself grant one.

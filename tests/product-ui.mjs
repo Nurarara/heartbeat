@@ -1,0 +1,54 @@
+// Actual React product screens in a simulated DOM; network mocked, no payments/inference.
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import {build} from 'esbuild';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+const dom=new JSDOM('<div id="app"></div>',{url:'http://localhost:5173/app',pretendToBeVisual:true});
+for(const key of ['window','document','HTMLElement','HTMLInputElement','HTMLSelectElement','localStorage','location','history'])Object.defineProperty(globalThis,key,{value:key==='window'?dom.window:dom.window[key],configurable:true});
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+let reducedMotion=true,motionListener;window.matchMedia=()=>({get matches(){return reducedMotion;},addEventListener(_event,fn){motionListener=fn;},removeEventListener(){motionListener=null;}});
+globalThis.Image=function(){const image=document.createElement('img');image.decode=()=>Promise.resolve();return image;};
+const london={name:'London',country:'United Kingdom',latitude:51.5,longitude:-.12,timezone:'Europe/London'};
+let preferences=null,liked=false,pairCount=0,saveCount=0,registers=0;
+const requests=[];
+globalThis.fetch=async(url,options={})=>{const path=String(url),body=options.body?JSON.parse(options.body):null;requests.push({path,body});
+ if(path.startsWith('/api/locations'))return Response.json({locations:[london]});
+ if(path.startsWith('/api/context'))return Response.json({context:{temperature:9,observedAt:Date.now(),fetchedAt:Date.now(),weatherCode:3,isDay:null},serverTime:Date.now()});
+ if(path==='/api/ai/status')return Response.json({configured:false,authorized:false,available:false,reason:'Fixture: no inference'});
+ if(path==='/api/product/auth/session')return Response.json({user:{id:'fixture-account',email:'you@example.test',verified:true},local:true,access:{plan:'trial',allowance:3,used:1},billingReady:false});
+ if(path==='/api/product/preferences'){if(body){preferences=body.preferences;saveCount++;return Response.json({saved:true});}return Response.json({preferences,memory:null});}
+ if(path==='/api/product/library')return Response.json({pictures:[{id:'picture-one',title:'Rain-softened water',url:'/api/ai/art/picture-one',phase:'day',createdAt:Date.now(),favourite:liked,reason:'A subdued afternoon.'}]});
+ if(path==='/api/product/favourite'){liked=body.favourite;return Response.json({saved:true});}
+ if(path==='/api/product/devices')return Response.json({devices:[]});
+ if(path==='/api/product/device/approve'){pairCount++;return Response.json({paired:true});}
+ if(path==='/api/product/plans')return Response.json({billingReady:false});
+ if(path==='/api/product/auth/register'){registers++;return Response.json({error:'Email delivery is not configured yet.'},{status:503});}
+ throw new Error(`Unexpected request ${path}`);
+};
+const output=await build({stdin:{contents:"export {Landing,Pricing} from './components/product-shell';export {Studio,AuthPage,CustomerDisplay} from './components/customer-app';",resolveDir:process.cwd(),loader:'tsx'},bundle:true,platform:'node',format:'cjs',packages:'external',write:false,tsconfig:'tsconfig.json',logLevel:'silent'});
+const artifact=new URL('../.sites-runtime/tests/product-ui.cjs',import.meta.url);await mkdir(new URL('../.sites-runtime/tests/',import.meta.url),{recursive:true});await writeFile(artifact,output.outputFiles[0].contents);
+const components=createRequire(import.meta.url)(fileURLToPath(artifact)),React=await import('react'),{act}=React,{createRoot}=await import('react-dom/client');let root;
+const settle=(ms=25)=>act(async()=>{await new Promise(r=>setTimeout(r,ms));});
+const click=async button=>{assert.ok(button,'Expected an interactive control');await act(async()=>button.click());await settle();};
+const button=label=>[...document.querySelectorAll('button')].find(b=>b.textContent===label||b.getAttribute('aria-label')===label);
+async function input(element,value){assert.ok(element);await act(async()=>{Object.getOwnPropertyDescriptor(element instanceof dom.window.HTMLSelectElement?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype,'value').set.call(element,value);element.dispatchEvent(new dom.window.Event(element instanceof dom.window.HTMLSelectElement?'change':'input',{bubbles:true}));});await settle();}
+async function mount(Component){await act(async()=>{root=createRoot(document.getElementById('app'));root.render(React.createElement(Component));});await settle();}
+async function unmount(){await act(async()=>root.unmount());await settle();}
+try {
+ await mount(components.Landing);assert.match(document.body.textContent,/A screenwith a pulse/);const preview=document.querySelector('.hp-demo img').src;await click([...document.querySelectorAll('button[aria-label="Preview After hours"]')][0]);assert.notEqual(document.querySelector('.hp-demo img').src,preview);assert.equal(button('Preview After hours').getAttribute('aria-pressed'),'true');assert.equal(document.querySelector('.hp-landing').dataset.atmosphere,'night');assert.equal(document.querySelectorAll('button[aria-label=\"Preview After hours\"][aria-pressed=true]').length,2,'Both atmosphere selectors stay synchronized');assert.equal(document.querySelector('.hp-landing').dataset.motion,'false','Reduced-motion preference disables breathing and parallax');await act(async()=>{reducedMotion=false;motionListener();});assert.equal(document.querySelector('.hp-landing').dataset.motion,'true');Object.defineProperty(document,'hidden',{value:true,configurable:true});await act(async()=>document.dispatchEvent(new dom.window.Event('visibilitychange')));assert.equal(document.querySelector('.hp-landing').dataset.motion,'false','Hidden tabs pause the living background');Object.defineProperty(document,'hidden',{value:false,configurable:true});await act(async()=>document.dispatchEvent(new dom.window.Event('visibilitychange')));assert.equal(document.querySelector('.hp-landing').dataset.motion,'true');reducedMotion=true;assert.equal(document.querySelector('.hp-orbit-link').getAttribute('href'),'/auth?mode=register');assert.equal(requests.length,0,'Curated landing previews never call generation');await unmount();
+ await mount(components.Pricing);assert.match(document.body.textContent,/No payment will be taken/);assert.ok(button('Coming soon').disabled);await unmount();
+ await mount(components.Studio);assert.match(document.body.textContent,/Your atmosphere/);assert.match(document.body.textContent,/2/);assert.equal(document.querySelector('input[type=password]'),null,'No shared access key in the customer studio');
+ await click(button('Choose your city'));assert.ok(document.querySelector('[role=dialog]'));await input(document.querySelector('[role=dialog] input'),'Lon');await settle(350);await click([...document.querySelectorAll('.hp-city-results button')][0]);assert.equal(preferences.location.name,'London');assert.equal(document.querySelector('[role=dialog]'),null);assert.ok(saveCount>=1);
+ await click(button('Atmosphere'));await input(document.querySelector('select[aria-label="Visual language"]'),'pencil');assert.equal(preferences.style,'pencil');assert.match(document.body.textContent,/Preferences saved/);
+ await click(button('Your collection'));await click(button('Save favourite: Rain-softened water'));assert.equal(liked,true);assert.equal(button('Remove favourite: Rain-softened water').getAttribute('aria-pressed'),'true');
+ await click(button('Desktop companion'));await input(document.querySelector('input[inputmode=numeric]'),'123456');await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));await settle();assert.equal(pairCount,1);assert.match(document.body.textContent,/Desktop paired/);
+ await click(button('Account & billing'));assert.ok(button('Manage billing').disabled);assert.match(document.body.textContent,/No subscription is being charged/);await unmount();
+ history.replaceState(null,'','/auth?mode=register');await mount(components.AuthPage);await input(document.querySelector('input[type=email]'),'person@example.test');await input(document.querySelector('input[type=password]'),'a long test password');await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));await settle();assert.equal(registers,1);assert.match(document.body.textContent,/Email delivery is not configured/);assert.equal(document.querySelector('input[type=password]').value,'a long test password');await unmount();
+ const originalStorage=globalThis.localStorage;
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw new Error('Storage is blocked');}});
+ try{await mount(components.CustomerDisplay);await settle(100);assert.ok(document.querySelector('.heartbeat-live[data-running="true"]'),'Server-owned preferences open the account display even with blocked local storage');assert.ok(document.querySelector('.hb-city-button').textContent.includes('London'));assert.match(document.querySelector('.hb-artwork-status').textContent,/Illustrated preview/,'Fallback art is visibly labelled instead of implying a generated image');await click(button('City and display settings'));assert.match(document.body.textContent,/cannot save your city/);assert.equal(document.querySelector('input[type=password]'),null,'Account display never requests a shared access key');await unmount();}finally{Object.defineProperty(globalThis,'localStorage',{value:originalStorage,configurable:true});}
+ assert.ok(!requests.some(r=>r.path.includes('/generation')||r.path.includes('/checkout')),'Product navigation does not spend generation or billing requests');
+ console.log('Passed actual React landing previews, disabled unconfigured billing, studio/city search/save, preferred art style, favourites, desktop pairing, account navigation and visible registration failure. DOM simulated; no browser screenshot, inference, email or payment.');
+}finally{if(root)try{await act(async()=>root.unmount());}catch{}dom.window.close();}

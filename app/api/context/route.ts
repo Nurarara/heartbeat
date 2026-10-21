@@ -1,4 +1,14 @@
-import { collectContext } from "@/lib/context";
+import { collectContext, contextPlace } from "@/lib/context";
 import { failure, json, row, decode } from "@/lib/server";
 import { LONDON } from "@/lib/world";
-export async function GET(request: Request) { try { const r = await row(request); return json({ context: await collectContext(r ? decode(r).profile.location : LONDON), serverTime: Date.now() }); } catch (e) { return failure(e); } }
+export async function GET(request: Request) {
+  let selected;
+  try { selected = contextPlace(new URL(request.url).searchParams); }
+  catch (error) { return failure(error, 400); }
+  try {
+    // The local display supplies its selected city directly and needs no D1 row.
+    const existing = selected ? null : await row(request);
+    const place = selected || (existing ? decode(existing).profile.location : LONDON);
+    return json({ context: await collectContext(place, request.signal), serverTime: Date.now() });
+  } catch (error) { return failure(error); }
+}

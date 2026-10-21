@@ -1,0 +1,1 @@
+ALTER TABLE `ai_attempts` ADD `image_hash` text;

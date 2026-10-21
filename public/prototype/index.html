@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101b24"><meta name="description" content="Original, browser-drawn worlds. A free visual experiment for Heartbeat.">
+  <title>Heartbeat · A little atmosphere</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="ambient" class="ambient" aria-label="Heartbeat ambient art prototype">
+    <div id="artwork" class="artwork" aria-live="off"></div><div class="shade" aria-hidden="true"></div>
+    <header class="masthead chrome"><a class="brand" href="./" aria-label="Heartbeat home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h5l3-7 4 14 3-7h5"/></svg>heartbeat</a><span class="edition">A little atmosphere <span>—</span> Study 01</span><button id="about-toggle" class="quiet-button" aria-expanded="false" aria-controls="about">About this study <span>↗</span></button></header>
+    <section class="scene-intro chrome" aria-labelledby="scene-title"><div class="eyebrow"><span id="scene-number">01</span><span class="hairline"></span><span id="scene-category">SUNLIT SUNDAY</span></div><h1 id="scene-title">No particular<br>place to be.</h1><p id="scene-subtitle">Open windows. Slow afternoons.</p></section>
+    <div class="clock"><time id="clock">13:20</time><span id="clock-location">LONDON · SAMPLE</span></div>
+    <div class="temperature"><span id="temperature">26<span>°</span></span><span class="temperature-note">OUTDOOR TEMPERATURE</span></div>
+    <footer class="footer chrome"><span class="prototype-note"><i></i> Browser-drawn study <span class="desktop-note">· no image API</span></span><div class="transport"><button id="new-scene" class="icon-button" title="New composition (N)" aria-label="New composition"><svg viewBox="0 0 24 24"><path d="m16 3 5 1-1 5M21 4l-7 7M3 17l5-5m6 3 7 6m-5 0h5v-5M3 5l5 5"/></svg></button><button id="settings-toggle" class="context-toggle" aria-expanded="false" aria-controls="context-panel"><span class="small-orb"></span>Shape the moment <span class="toggle-plus">+</span></button><button id="fullscreen" class="icon-button" title="Fullscreen (F)" aria-label="Enter fullscreen"><svg viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></div><span class="edition-mark">MADE TO BE LEFT ON.</span></footer>
+    <section id="context-panel" class="panel" aria-labelledby="panel-title" hidden>
+      <div class="panel-top"><div><span class="eyebrow">THE MOMENT, REIMAGINED</span><h2 id="panel-title">What does the day feel like?</h2></div><button class="close-button" id="close-settings" aria-label="Close scene controls">×</button></div>
+      <div class="presets" role="group" aria-label="Sample conditions"><button data-preset="sunday" class="preset active"><span class="swatch sunday"></span><span>Sunlit Sunday<small>13:20 · 26°</small></span></button><button data-preset="festive" class="preset"><span class="swatch festive"></span><span>Winter lights<small>18:40 · 4°</small></span></button><button data-preset="midnight" class="preset"><span class="swatch midnight"></span><span>After midnight<small>23:15 · 9°</small></span></button></div>
+      <div class="range-grid"><label for="hour">Local time <output id="hour-value" for="hour">13:20</output><input id="hour" type="range" min="0" max="1439" step="10" value="800"></label><label for="temp">Temperature <output id="temp-value" for="temp">26°C</output><input id="temp" type="range" min="-15" max="40" step="1" value="26"></label></div>
+      <div class="field-grid"><label for="date">Date<input id="date" type="date" value="2026-06-21"></label><label for="theme">Artwork<select id="theme"><option value="auto">Follow the moment</option><option value="room">Japanese afternoon</option><option value="city">A festive street</option><option value="cosmos">A quiet universe</option><option value="meadow">Dogs in a meadow</option><option value="lake">Beside the lake</option><option value="coast">A quiet coast</option></select></label></div>
+      <label class="check-row"><input id="festive" type="checkbox"><span>Include festive cues</span></label>
+      <p id="reason" class="reason"></p>
+      <div class="panel-bottom"><button id="export" class="text-button">Save scene recipe <span>↓</span></button><label class="check-row"><input id="auto-evolve" type="checkbox"><span>New composition every 90s</span></label></div>
+      <p class="honesty">Simulated conditions · local rules · original SVG artwork. Variations explore six authored worlds.</p>
+    </section>
+    <section id="about" class="panel about-panel" hidden aria-labelledby="about-title"><div class="panel-top"><div><span class="eyebrow">A NOTE ON HEARTBEAT</span><h2 id="about-title">Art that belongs to the moment.</h2></div><button id="close-about" class="close-button" aria-label="Close about">×</button></div><p>One day, a screen that understands the atmosphere outside and imagines something beautiful for the room inside.</p><p>This is the first free visual study. Every shape is drawn in your browser. Try a warm Sunday, a festive evening or the quiet of night, then leave it alone. The controls fade away.</p><p>These are six authored, procedurally varied scenes. They test atmosphere and playback; live AI imagination comes later.</p><div class="about-foot">No image API. No account. No external assets.</div></section>
+    <div id="status" class="sr-only" role="status" aria-live="polite"></div>
+    <noscript><div class="no-script">Heartbeat’s browser-drawn study needs JavaScript enabled.</div></noscript>
+  </main>
+  <script type="module" src="./player.mjs"></script>
+</body>
+</html>

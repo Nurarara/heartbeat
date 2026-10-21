@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./ambient.css";
+import "./live-ambient.css";
+import "./product.css";
 
 export const metadata: Metadata = {
   title: "Heartbeat · Living visuals",
