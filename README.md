@@ -4,7 +4,7 @@
 
 **Status — 21 October 2026:** working local account application and unsigned Windows companion. Cloudflare generation has been exercised with real inference. Stripe and email integrations are implemented but not activated or tested end to end with their real services. Hosted production, real-browser visual QA and hands-on Windows qualification remain outstanding. This is not a public commercial release.
 
-Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
+Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the current system design](docs/system-design.md) for architecture diagrams, payment-to-access flow and credential locations; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
 
 ## Start locally
 
@@ -114,6 +114,8 @@ These are provisional settings in `lib/product/core.ts`, not approved commercial
 Both paid tiers currently use the same models. Premium deeper reasoning, richer context, higher-resolution output and distinct quality tiers are future work. No unlimited generation or higher-tier quality advantage is being claimed. Actual prices are read from configured Stripe Prices when billing is enabled; unconfigured plans remain unavailable.
 
 ## Secrets and GitHub
+
+Active local credentials are in the ignored root `.dev.vars`, next to `package.json`. The current checkout has Cloudflare credentials configured; email and Stripe credentials are absent and billing is disabled. Customers authenticate with an account or paired device token. A subscription changes the server entitlement; it never distributes a provider API key. The [system design and key inventory](docs/system-design.md) records the exact implemented flow, five-second checkout confirmation polling, shared operating-cap limitation and hosted setup still required.
 
 `.dev.vars`, `.env*` except `.env.example`, runtime databases, local tool state and `outputs/` are ignored. `.env.example` contains placeholders only. Customers receive account sessions; provider/email/Stripe credentials belong in runtime server secrets. Do not paste tokens into chat or put them into frontend code.
 

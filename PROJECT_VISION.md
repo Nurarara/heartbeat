@@ -2,6 +2,8 @@
 
 Updated 22 October 2026. [README.md](README.md) describes how to run the current system. This document records the intended experience, what has been implemented, why the architecture and design were chosen, what is still missing and how to proceed.
 
+The [current system design](docs/system-design.md) maps the actual components, artwork pipeline, credential boundary and Stripe activation sequence. Subscription access is server-managed: verified Stripe reconciliation updates an account entitlement, while the operator's model credentials stay on the server. The existing checkout-return UI checks every five seconds for up to one minute. Billing remains disabled locally; real sandbox/hosted qualification, delayed-event recovery and a suitable shared operating budget must precede selling immediate paid access. This is an implemented integration, not an already operating commercial service.
+
 ## The product
 
 Heartbeat is a living ambient surface for screens: a wallpaper or screensaver that interprets the local environment and creates an atmosphere people enjoy leaving in their room. It uses the selected city's time, outdoor weather, temperature, date and season. These are creative clues, not a claim that the system reads a person's emotions or senses their room.
