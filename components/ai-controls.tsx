@@ -10,7 +10,6 @@ export function AIControls({ connection, busy, message, unlock, refresh, current
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [tasteApplied, setTasteApplied] = useState(false);
   const [checking, setChecking] = useState(false);
-  if(connection.account&&!connection.authorized)return <details className="hb-creative-tools"><summary>Your artwork</summary><p role="status" className="hb-panel-note">{connection.configured?'Your session ended. Sign in again to prepare pictures.':connection.reason}</p><a href="/auth" className="hb-preferences-button">Sign in</a><a href="/app" className="hb-preferences-button">Your studio</a></details>;
   async function connect() {
     setUnlocking(true);
     try { if (await unlock(key)) { setKey(''); setNote('This browser is connected.'); } }
@@ -33,6 +32,14 @@ export function AIControls({ connection, busy, message, unlock, refresh, current
       link.href = url; link.download = 'heartbeat-picture-ratings.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { setNote('Ratings could not be exported.'); }
   }
+  if(connection.account)return <section className="hb-picture-preferences" aria-labelledby="hb-picture-preferences-title">
+    <h3 id="hb-picture-preferences-title">Your artwork</h3>
+    <p className="hb-panel-note" role="status">{busy?'Preparing your next picture. This one stays until it is ready.':connection.reason}</p>
+    {current?.artwork&&<><p className="hb-picture-title">{current.artwork.title}</p><p className="hb-panel-note">How does this picture feel? Your feedback shapes future ideas.</p><div className="hb-idea-actions">{(['more','less'] as const).map(preference=><button key={preference} className="hb-preferences-button" disabled={tasteApplied} onClick={()=>{taste(current.artwork!.proposal,preference);setTasteApplied(true);setNote(preference==='more'?"We'll keep this feeling in mind for future pictures.":"We'll look for different ideas in future pictures.");}}>{preference==='more'?'More like this':'Less like this'}</button>)}</div></>}
+    {!connection.authorized&&connection.configured&&<a href="/auth" className="hb-preferences-button">Sign in again</a>}
+    <a className="hb-picture-style" href="/app?tab=preferences">Adjust your visual style</a>
+    {note&&<p className="hb-panel-note" role="status">{note}</p>}
+  </section>;
   return <details className="hb-creative-tools"><summary>AI connection and picture review</summary>
     <p className="hb-panel-note" role="status"><strong>{connection.authorized ? busy ? 'Connected · Preparing a picture' : 'Connected' : connection.configured ? 'Not connected' : 'AI setup unavailable'}</strong></p>
     <p className="hb-panel-note">{connection.reason}</p>

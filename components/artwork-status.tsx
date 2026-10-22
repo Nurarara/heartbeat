@@ -2,6 +2,7 @@
 import type {AIStatus} from '@/lib/ai/types';
 export function ArtworkStatus({connection,busy,message,original,waiting=false}:{connection:AIStatus;busy:boolean;message:string;original:boolean;waiting?:boolean}){
  const preparing=busy||waiting;
+ if(original&&!preparing&&connection.available)return null;
  const state=preparing?'preparing':original?'original':'preview';
  const label=preparing?'Preparing your next original':original?'Your original artwork':'Illustrated preview';
  const reset=connection.capacityResetAt?` Capacity resets ${new Date(connection.capacityResetAt).toLocaleString(undefined,{weekday:'short',hour:'2-digit',minute:'2-digit',timeZoneName:'short'})}.`:'';

@@ -1,6 +1,6 @@
-﻿# Heartbeat — project vision and decisions
+# Heartbeat — project vision and decisions
 
-Updated 21 October 2026. [README.md](README.md) describes how to run the current system. This document records the intended experience, what has been implemented, why the architecture and design were chosen, what is still missing and how to proceed.
+Updated 22 October 2026. [README.md](README.md) describes how to run the current system. This document records the intended experience, what has been implemented, why the architecture and design were chosen, what is still missing and how to proceed.
 
 ## The product
 
@@ -80,6 +80,16 @@ The reference sites were requested for their feel and behaviour, not as assets t
 The implementation currently uses text-free generated raster assets plus limited transforms for breathing/parallax, not a real-time deforming 3D organism. Native scrolling, no forced loader, reduced-motion support and hidden/offscreen pausing keep it simpler and more accessible. Moving to a shader/3D scene is a possible enhancement after performance and user value are measured. A landing effect must not dictate the ambient display's resource use.
 
 Motion is part of presentation, not the definition of intelligence. A picture that responds meaningfully to a rainy evening is more valuable than a continuously moving scene that ignores the environment.
+
+## Usability refinement ? 22 October 2026
+
+User screenshots showed that independent fixed-position navigation/status overlays collided with the brand and clock. The display now uses a shared grid and wrapping header so each item has real layout space. Redundant status for an available original is omitted; preparation/capacity/fallback states remain explicit.
+
+The customer experience should feel like an ambient product rather than its development console. Local theme previews, history counters and planning diagnostics are hidden in customer settings, which offer simple more/less feedback and a route to visual-language preferences. The free overview stays focused on the current atmosphere; paid overviews can show recent artwork. Collection ownership/favourites are unchanged.
+
+The landing is a translucent window into several curated artistic worlds, with a different opening image on return visits when storage permits avoiding repeats. This is an inexpensive presentation choice, not a new runtime inference per page view. The brand can vary without exposing a prompt generator or consuming the daily art budget.
+
+These changes respond to supplied visual evidence, but rendered post-change geometry remains unverified until browser access or fresh human screenshots are available.
 
 ## Why this technical stack
 

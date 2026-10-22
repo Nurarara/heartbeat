@@ -452,9 +452,62 @@
   .heartbeat-live *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
-/* An explicit preview/generation state prevents silent fallback artwork. */
-.heartbeat-live .hb-artwork-status{position:fixed;z-index:5;left:28px;bottom:92px;max-width:min(430px,calc(100vw - 56px));color:#f1eee4;text-shadow:0 1px 8px #000;font:12px/1.5 Arial,sans-serif;transition:opacity .3s}
+/* Header and readings share normal flow so narrow screens cannot overlap labels. */
+.heartbeat-live .hb-header{align-items:center;flex-wrap:wrap;gap:8px 20px}
+.heartbeat-live .hb-brand{min-height:44px;flex-shrink:0}
+.heartbeat-live .hb-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:18px;flex-wrap:wrap;margin-left:auto;max-width:100%}
+.heartbeat-live .hb-studio-link{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 0;font-size:12px;text-decoration:none;white-space:nowrap}
+.heartbeat-live .hb-header-actions .hb-city-button{padding-left:0;min-width:0;max-width:40vw}
+.heartbeat-live .hb-city-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.heartbeat-live .hb-display-meta{position:absolute;z-index:3;left:var(--hb-edge);right:var(--hb-edge);bottom:max(103px,calc(env(safe-area-inset-bottom) + 90px));display:flex;flex-direction:column;gap:18px}
+.heartbeat-live .hb-readings{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:18px}
+.heartbeat-live .hb-readings .hb-clock,.heartbeat-live .hb-readings .hb-temperature{position:static;inset:auto;min-width:0}
+.heartbeat-live .hb-readings .hb-temperature{max-width:170px;justify-self:end}
+.heartbeat-live .hb-artwork-status{position:static;max-width:min(480px,100%);color:#f1eee4;text-shadow:0 1px 8px #000;font:12px/1.5 Arial,sans-serif;transition:opacity .3s}
 .heartbeat-live .hb-artwork-status>span{display:block;font-weight:600;letter-spacing:.03em}
-.heartbeat-live .hb-artwork-status>small{display:block;margin-top:5px;color:#dddcd3;font-size:11px}
+.heartbeat-live .hb-artwork-status>small{display:block;margin-top:5px;color:#dddcd3;font-size:11px;overflow-wrap:anywhere}
 .heartbeat-live[data-quiet=true] .hb-artwork-status[data-artwork-state=original]{opacity:0;pointer-events:none}
-@media(max-width:600px){.heartbeat-live .hb-artwork-status{left:20px;bottom:100px;max-width:calc(100vw - 40px)}}
+.heartbeat-live .hb-display-meta .hb-notice{position:static;inset:auto;transform:none;max-width:min(480px,100%);width:fit-content;text-align:left}
+.heartbeat-live .hb-picture-preferences{margin-top:26px;padding-top:22px;border-top:1px solid #ffffff24}
+.heartbeat-live .hb-picture-preferences h3{font-size:16px;font-weight:500;margin:0}
+.heartbeat-live .hb-picture-preferences .hb-panel-note{margin-top:14px;font-size:12px}
+.heartbeat-live .hb-picture-title{font-size:14px;margin:20px 0 0;color:#f1eee4}
+.heartbeat-live .hb-picture-style{display:inline-block;margin-top:23px;font-size:12px;color:#eed4a7}
+.heartbeat-live .hb-picture-preferences .hb-idea-actions{gap:12px}
+@media(max-width:600px){
+ .heartbeat-live .hb-header-actions{gap:12px}
+ .heartbeat-live .hb-studio-link{font-size:11px}
+ .heartbeat-live .hb-display-meta{bottom:max(100px,calc(env(safe-area-inset-bottom) + 86px));gap:15px}
+ .heartbeat-live .hb-readings .hb-clock time{font-size:clamp(46px,12vw,65px)}
+ .heartbeat-live .hb-panel-footer{align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+}
+@media(max-width:360px){
+ .heartbeat-live .hb-readings{grid-template-columns:minmax(0,1fr);gap:12px}
+ .heartbeat-live .hb-readings .hb-temperature{justify-self:start;align-items:flex-start}
+ .heartbeat-live .hb-readings .hb-clock time{font-size:clamp(42px,14vw,53px)}
+ .heartbeat-live .hb-header-actions{gap:10px}
+}
+@media(max-height:430px){
+ .heartbeat-live .hb-display-meta{bottom:76px;gap:10px}
+ .heartbeat-live .hb-artwork-status>small{display:none}
+ .heartbeat-live .hb-readings{grid-template-columns:minmax(0,1fr) auto;gap:15px}
+ .heartbeat-live .hb-readings .hb-clock time{font-size:42px}
+ .heartbeat-live .hb-readings .hb-temperature strong{font-size:28px}
+}
+
+.heartbeat-live[data-customer=true]{--hb-accent:#fc684b;font-family:Manrope,Arial,sans-serif}
+.heartbeat-live[data-customer=true] .hb-panel{background:#0d161e;border-color:#ffffff26;border-radius:12px}
+.heartbeat-live[data-customer=true] .hb-panel-title{font:500 21px/1.25 Manrope,Arial,sans-serif;letter-spacing:-.04em}
+.heartbeat-live[data-customer=true] .hb-city-input{border-radius:5px;background:#ffffff04;border-color:#ffffff30}
+.heartbeat-live[data-customer=true] .hb-panel .hb-preferences-button{border-radius:5px;background:#ffffff04;border-color:#ffffff30;white-space:normal;min-height:44px;height:auto;padding-block:12px}
+.heartbeat-live[data-customer=true] .hb-unit-buttons button[aria-pressed=true]{background:#fc684b24;border-color:#fc684b;color:#fff0e7}
+.heartbeat-live[data-customer=true] .hb-toggle input{accent-color:#fc684b}
+.heartbeat-live[data-customer=true] .hb-done-button{border-radius:5px;background:#fc684b;color:#10131a}
+
+/* One grid owns the header, readings and controls, including wrapped mobile rows. */
+.heartbeat-live[data-running=true]{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;row-gap:22px;padding:max(24px,env(safe-area-inset-top)) var(--hb-edge) max(24px,env(safe-area-inset-bottom));min-height:0}
+.heartbeat-live[data-running=true] .hb-header{grid-row:1;position:relative;inset:auto;min-width:0}
+.heartbeat-live[data-running=true] .hb-display-meta{grid-row:3;position:relative;inset:auto;min-width:0}
+.heartbeat-live[data-running=true] .hb-controls{grid-row:4;position:relative;inset:auto;transform:none;justify-self:center;max-width:100%;flex-wrap:wrap}
+@media(max-width:600px){.heartbeat-live[data-running=true]{row-gap:20px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}}
+@media(max-height:430px){.heartbeat-live[data-running=true]{row-gap:12px;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));overflow-y:auto}.heartbeat-live .hb-artwork-status>small{display:none}}

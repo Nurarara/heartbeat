@@ -1,4 +1,4 @@
-﻿# Heartbeat design QA
+# Heartbeat design QA
 
 final result: blocked
 
@@ -27,3 +27,9 @@ React DOM tests cover selector synchronization, reduced-motion state, hidden-tab
 ## Next QA steps
 
 Capture the target-equivalent landing at 1440 × 1024 and a narrow mobile viewport, then sign-in, studio, atmosphere and preview states. Put each source/implementation pair in the same comparison input. Review the five surfaces above, keyboard/touch operation and frame rate/battery. Fix actionable P0/P1/P2 issues and capture again before changing `final result` to passed. Native wallpaper/screensaver testing remains separate.
+
+## Screenshot follow-up ? 22 October 2026
+
+The user supplied three baseline screenshots showing a fixed studio link colliding with the brand, artwork status colliding with the clock, an unwanted developer-oriented creative panel and an unnecessary free-tier recent-art area. Those screenshots were inspected. Source fixes now use a common grid/wrapping header, simplified customer feedback, paid-only recent overview and softer rotating landing imagery. The new opening imagery intentionally varies from the original single-sculpture mockup at the user's request.
+
+Automated interaction and layout-structure checks pass, including blocked storage and revisit selection. No browser surface is available for a fresh rendered capture or same-viewport comparison. The final result remains blocked; these fixes must not be described as pixel-verified.

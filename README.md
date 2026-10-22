@@ -1,4 +1,4 @@
-﻿# Heartbeat
+# Heartbeat
 
 **A screen with a pulse.** Heartbeat is a context-aware ambient-art application: choose a city, then let original artwork respond to local time, real outdoor weather and the season. The core experience is artwork, a clock and temperature, with controls that recede while you leave it running.
 
@@ -64,6 +64,18 @@ There are three distinct cases:
 3. A real playback bug allowed a server cooldown to postpone retrieval of an already-funded queued picture for an hour. Recovery now has its own five-second polling schedule, independent of new-generation cooldown/capacity. The open tab also retains its request ID in memory when storage is blocked. Regression tests cover both cases.
 
 The account display labels illustrated previews, originals and preparing work. Capacity status includes the reset time; exhausted customer allowance remains a different explanation. Existing artwork stays available when generation is paused.
+
+## Usability follow-up ? 22 October 2026
+
+User screenshots exposed display overlays colliding at narrow widths. Header navigation now wraps in normal flow, and one grid owns the clock/temperature, artwork status and controls. Notices share that flow; normal available originals do not show a redundant status label. Short/narrow layouts wrap rather than pin separate labels over the time.
+
+Customer settings now show simple more/less picture feedback and a link to visual-style preferences. Theme-proposal previews, creative counters, reset tools and technical diagnostics remain in `/local-study`; they are not customer setup. City changes retain style and festive preferences, and preference controls disable while a save is pending.
+
+The free/trial overview omits ?Recently in your world.? Studio/Atelier accounts retain it. Existing collection/favourite access and stored artwork are unchanged; this is an overview simplification, not a new paid entitlement restriction.
+
+Landing artwork now rotates among four curated images on a new visit, avoiding the previous choice when browser storage is available. Artwork is deliberately translucent over the navy background. Atmosphere selectors also change the hero image, and sample temperatures use proper degree symbols. Opening the landing makes no inference request and does not promise a newly generated image every visit.
+
+React DOM coverage includes revisit variation, storage denial, simple picture feedback, free/paid recent sections and the structural grouping of header/readings/status. Real browser screenshots/geometry, touch/device and visual comfort checks still need human or browser access.
 
 ## Visual direction and why
 
