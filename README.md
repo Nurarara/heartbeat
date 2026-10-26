@@ -2,13 +2,15 @@
 
 **A screen with a pulse.** Heartbeat is a context-aware ambient-art application: choose a city, then let original artwork respond to local time, real outdoor weather and the season. The core experience is artwork, a clock and temperature, with controls that recede while you leave it running.
 
-**Status — 21 October 2026:** working local account application and unsigned Windows companion. Cloudflare generation has been exercised with real inference. Stripe and email integrations are implemented but not activated or tested end to end with their real services. Hosted production, real-browser visual QA and hands-on Windows qualification remain outstanding. This is not a public commercial release.
+**Status — 26 October 2026:** local account application with staged generation recovery, transactional dispatch, authoritative creative memory, usage/cost ledgers, durable billing reconciliation, resumable deletion and release gates. The Windows companion is an unsigned development build. Real inference examples predate this architecture change. Hosted capacity, real email/Stripe acceptance, browser/device QA and native Windows qualification remain outstanding. This is not a public commercial release.
 
 Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the current system design](docs/system-design.md) for architecture diagrams, payment-to-access flow and credential locations; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
 
+The [architecture implementation record](docs/architecture-changes.md) maps all 20 review requirements to source changes, remaining scope and release acceptance. Several requirements include hosted or human qualification that code alone cannot complete.
+
 ## Start locally
 
-This checkout is already prepared. Run:
+After pulling architecture changes, run `npm run build` and `npm run product:prepare` once before starting. The preparation script makes a private local backup before new migrations. Then run:
 
 ```powershell
 npm run dev
@@ -39,10 +41,10 @@ The preparation scripts create the active local AI/account tables and an ignored
 | `/pricing` | Trial and provisional memberships; no payment when billing is unconfigured |
 | `/desktop-guide` | Windows pairing/build instructions |
 | `/privacy`, `/terms` | Early-access information; operator policies still need finalization |
-| `/local-study` | Earlier free, city-only six-family SVG engine and optional local shared-key study |
-| `/prototype/` | Separate static SVG visual experiment, also available with `npm run prototype` |
+| `/local-study` | Earlier free engine; requires explicit loopback development opt-in |
+| `/prototype/` | Earlier static experiment; gated in the app, separately available with `npm run prototype` |
 
-Older `/pulse`, `/story` and world APIs remain reference code. They are not the new onboarding or current provider configuration.
+Older `/pulse`, `/story`, world APIs and prototype routes remain reference code. They are blocked unless `HEARTBEAT_LEGACY_ROUTES_ENABLED=true` in explicit HTTP loopback development. Account generation cannot use the old synchronous prepare API.
 
 ## Implemented so far
 
@@ -50,9 +52,10 @@ Older `/pulse`, `/story` and world APIs remain reference code. They are not the 
 - **Creative intelligence:** Cloudflare runtime director and image adapter, strict structured-output contracts, 93 theme ingredients, compatible sampling, bounded displayed-scene history, composition fingerprints and more/less feedback. New subjects and viewpoints are encouraged; absolute uniqueness is not guaranteed.
 - **Playback:** illustrated first frame, background preparation, decode-before-crossfade, pause/visibility handling, night crop checks, committed-history-only memory and private image retrieval. Failed work keeps the current picture.
 - **Accounts:** email/password authentication, salted PBKDF2 hashes, hashed opaque sessions, secure HTTPS cookies, bounded/rate-limited requests, verification and one-use reset links, sign-out and password-confirmed deletion. Password reset revokes existing sessions. OAuth is not implemented.
-- **Private ownership:** server preferences/memory, account-owned library and favourites, isolated image access, account switching and bounded retention. Up to 100 favourites are protected from routine expiry. The display opens from server preferences even if local storage is blocked; recovery across a reload still needs available storage.
-- **Durable generation:** Cloudflare Workflow binding, D1 jobs, unique account/request IDs, a permanent start gate and recovery polling. The client does not blindly repeat an ambiguous paid POST. Interrupted external work can still leave an operating attempt spent; there is no exactly-once provider guarantee.
-- **Billing integration:** hosted Stripe Checkout, customer-bound Portal, allowlisted monthly Prices, persistent checkout idempotency, signed raw-body webhooks, duplicate-event handling and current-state reconciliation under a per-customer lease. A browser success URL does not grant access. Refund/dispute handling and full lifecycle behaviour still require real Stripe sandbox testing.
+- **Private ownership and memory:** canonical server preferences with version conflicts, bounded memory derived from idempotent display/feedback events, default world/surface identities, owner-isolated images, cursor library pages and protected favourites. Server discovery recovers pending/ready work even when browser storage is unavailable. Epoch-based revocation, identity refresh and late-response guards protect account switching.
+- **Durable generation:** atomic job/outbox acceptance, stable Workflow dispatch, fenced persisted stages, explicit provider receipts, separate picture/operating ledgers, concurrency slots, queue deadlines, circuits and manifest-based R2 recovery. Unknown paid outcomes require reconciliation rather than automatic resubmission. No exactly-once provider guarantee is claimed.
+- **Billing integration:** hosted Checkout/Portal, one pending checkout, pinned Stripe API/event contract, signed durable webhook inbox, bounded retries/quarantine, scheduled current-state reconciliation and persistent review holds. Browser success URLs do not grant access. Actual Stripe sandbox lifecycle remains unqualified.
+- **Operations:** independent scheduled repair/retention/deletion tasks, immediate account revocation with resumable cleanup, aggregate operational alerts and separately authenticated audited recovery endpoints. Monitoring destinations and production runbooks still require operator setup.
 - **Windows development companion:** six-digit pairing, scoped/revocable device credentials, current-user DPAPI encryption, private downloads, explicit wallpaper apply/restore, per-monitor selection, optional automatic updates and cached `.scr` entry modes. It is unsigned, not an installer or qualified release.
 
 ## Why old pictures could remain
@@ -109,7 +112,7 @@ Default configured AI models are recorded in `.env.example`; model access, costs
 | Studio | 120 per billing month | 30 minutes |
 | Atelier | 360 per billing month | 10 minutes |
 
-These are provisional settings in `lib/product/core.ts`, not approved commercial terms. Failed preparations and HOLDs do not consume customer picture credits; in-progress work reserves allowance and successful pictures still count after image expiry. All provider attempts remain accounted against the separate global operating cap.
+These are provisional settings in `lib/product/core.ts`, not approved commercial terms. Known safe failures and HOLDs release customer picture reservations; successful preparations commit once even after image expiry. Ambiguous external outcomes remain held for reconciliation. Provider attempts and estimated monetary spend use separate ledgers. Hosted targets require approved positive estimates and a daily monetary ceiling; the local three-attempt cap was not raised.
 
 Both paid tiers currently use the same models. Premium deeper reasoning, richer context, higher-resolution output and distinct quality tiers are future work. No unlimited generation or higher-tier quality advantage is being claimed. Actual prices are read from configured Stripe Prices when billing is enabled; unconfigured plans remain unavailable.
 
@@ -129,10 +132,14 @@ This checks the **exact Git index**, rejects private runtime/credential files, l
 
 ## Verification and its limits
 
+See [the 26 October architecture validation record](docs/architecture-validation.md) for the latest checks, preserved local data counts and explicit evidence limits.
+
 Useful commands:
 
 ```powershell
 npm run test:product
+npm run test:architecture
+npm run check:schema
 npm run test:ai
 npm run test:ambient
 npm run test:creative
@@ -159,10 +166,10 @@ Prior real Cloudflare tests exercised actual directing, generation and private r
 | Visual QA | Browser access or human desktop/mobile captures; compare at the same viewport, fix typography/crops/contrast/interactions and assess frame rate/battery |
 | Email | Operator verifies a sending domain in Resend, sets sender/key; test verification/reset delivery and expired links on HTTPS production-mode staging |
 | Payments | Operator creates Stripe sandbox products/Prices and Portal configuration; set webhook secrets and test purchase, decline, duplicate click, renewal/failure, upgrade/downgrade, cancel, refund/dispute and retries |
-| Hosting | Choose target/domain, authenticate cloud account, provision isolated D1/R2/Workflow resources, apply migrations and secrets; qualify CPU/memory before selecting a paid plan |
+| Hosting | Fill isolated resource IDs/origins and budgets in `config/environments.json`; provision resources/secrets and protected GitHub environments; qualify hashing/JPEG/Workflow CPU and memory |
 | Economics | Approve prices, allowances, cadence and spending ceiling using measured reasoning/image/storage/traffic costs; three shared attempts/day is not a public-service budget |
-| Operations | Implement scheduled cleanup, periodic billing reconciliation, monitoring/alerts, backup/restore drills and a support/admin review process |
-| Security | Independent auth/payment/ownership review, abuse/rate-limit hardening and provider/asset/data licensing review |
+| Operations | Qualify the implemented scheduler, repair, audited picture adjustments and billing reconciliation; connect alerts; perform hosted backup/restore/rollback drills and finish a support interface |
+| Security | Independently review auth/payment/ownership and implemented abuse controls; measure 600k-iteration password hashing on hosted Workers; review provider/asset/data licensing |
 | Windows | Human tests for apply/restore, multiple monitors, DPI, preview/input/lock/sleep; prior slideshow restore, signing, installer and uninstall still need work |
 | Product quality | Several real day/night sessions, diverse real images and a small private beta where people choose whether to keep it running |
 | Launch | Final operator/support identity, privacy/retention and refund/cancellation terms, applicable tax review, separate live Stripe configuration and explicit release decision |

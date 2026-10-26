@@ -130,12 +130,14 @@ Automated checks cover real SQLite transactions, mocked external integrations, a
 
 ## Remaining work, in order
 
+Architecture update, 26 October 2026: staged recovery, transactional dispatch, server-owned versioned memory, separate ledgers/admission, durable billing inbox/reconciliation, scheduled cleanup and recoverable deletion are implemented locally. The older roadmap below describes product/release qualification; scheduled cleanup and reconciliation no longer need an initial implementation. They need hosted acceptance, monitoring and support operations. See [the complete review coverage](docs/architecture-changes.md) and [updated system diagrams](docs/system-design.md).
+
 1. Open the redesigned app in real desktop/mobile browsers. Compare against the selected target, check font loading, image crops, text contrast, navigation, touch/keyboard, motion preferences and performance. Fix findings before calling visual QA passed.
 2. Qualify more real artwork over day/night/weather changes, including a multi-hour unattended session, offline/hidden return, stable holds and meaningful variety. Measure why a picture was appropriate and whether people keep the display running.
 3. Configure HTTPS production-mode staging with a verified email sender, then test verification/reset delivery, replay/expiry, two-account isolation and deletion against real services.
 4. Configure Stripe sandbox Prices/Portal/webhooks; test purchase, decline/authentication, duplicate clicks, plan changes/proration, renewals, failed payments/recovery, cancellation, retries and refund/dispute review. Fix actual provider-contract gaps before live billing.
 5. Provision isolated hosted D1/R2/Workflow resources, migrations and server secrets. Measure CPU/memory and concurrent requests; approve a suitable budget rather than assuming free-tier suitability.
-6. Complete scheduled cleanup, periodic billing reconciliation, observability, cost alerts, backups/restore and support/admin review tools. Review authentication/abuse controls independently.
+6. Qualify scheduled cleanup, billing reconciliation and audited operator picture adjustments; connect operational alerts to a monitoring destination. Test hosted backup/restore/rollback, finish a support interface and independently review authentication/abuse controls.
 7. Qualify Windows apply/restore, monitors/DPI, preview/input/lock and sleep/wake. Decide slideshow support, then signing, installer and uninstall/distribution.
 8. Finalize prices, allowance/cadence rules, public operator/support identity, privacy/retention/refund/cancellation terms and appropriate tax/licensing review. Run a small private beta before a separate live-payment/release decision.
 9. Add deeper premium reasoning, richer theme nodes and intelligent long-run novelty checks only after core quality, costs and retention are convincing.
@@ -151,3 +153,17 @@ Technical deployment/configuration work can be assisted; creating/verifying exte
 Potential surfaces include phones/tablets, TVs/projectors, digital frames and eventually commercial installations. Hardware, fleet management, business signage and advanced event/news awareness remain deferred. Opt-in seasonal/cultural context must be appropriate and restrained. Civic/political cues should not promote candidates or present outcomes as good or bad.
 
 The central asset is a creative context engine that understands a moment and directs suitable art for a surface. The brand can feel alive while the application remains quiet. Additional dashboards, routes or animations are not evidence that this core value has been achieved.
+
+## Architecture decisions and boundaries — 26 October 2026
+
+Keep the current Worker, D1, private R2 and Workflow stack while repairing the boundaries between them. A new database or orchestration vendor would not itself solve lost dispatch, ambiguous inference, competing memory writes or unsafe account deletion. The implementation therefore adds explicit durable stages, transactional outbox delivery, operation receipts, version claims, manifests and bounded repair.
+
+Creative memory belongs to a world on the server. Only validated display/feedback events change it; clients cannot overwrite it with old snapshots. Preference versions and display event IDs let multiple tabs/devices disagree safely. Default worlds and surfaces are now separate identities so future phones can reuse the domain without assuming an account is a screen. Multi-world UI, independent per-device surfaces and mobile apps remain future work.
+
+Continuity takes priority over inference frequency. The last valid image remains while work is held or unavailable. A safely failed preparation releases customer picture credit; a successful preparation commits once. Unknown paid outcomes require reconciliation instead of an automatic repeat purchase. Picture allowances, provider attempts, estimated money, concurrency and subscription eligibility are deliberately separate policies.
+
+Night comfort must be rechecked when showing an image. Native cached artwork uses a short-lived selected-city policy and crop checks; stale or malformed policy fails dark. This is source-level protection, not proof of real monitor comfort, battery performance, OS lock safety or restoration behavior.
+
+The new release configuration separates development, staging and production and refuses placeholder resources or unapproved hosted budgets. Source publication cannot activate billing. Real service accounts, resource provisioning, protected environments, commercial weather, cost choices, hosted password/JPEG CPU measurements and release acceptance are still necessary. Pure-JS 600k PBKDF2 is intentionally stronger than the legacy stored format, but its CPU cost must be qualified before inviting users.
+
+Long-run artistic quality is still an evaluation task. Existing sampling/contracts/fingerprints are useful evidence of variety, not a guarantee that every image is unique or worth displaying. A blinded human-rated image set, real multi-hour sessions and measured cheaper-model comparison should decide future creative and paid-tier claims.

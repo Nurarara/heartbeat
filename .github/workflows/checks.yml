@@ -1,0 +1,40 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.25.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check:secrets
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm run test:architecture
+      - run: pnpm run test:product
+      - run: pnpm run test:ai
+      - run: pnpm run test:creative
+      - run: pnpm run test:ambient
+      - run: pnpm run build
+      - run: pnpm run ai:prepare && pnpm run product:prepare
+      - name: Local built-app HTTP journey (AI and billing disabled)
+        shell: bash
+        run: |
+          pnpm start > /tmp/heartbeat-local-http.log 2>&1 &
+          heartbeat_server_pid=$!
+          trap 'kill "$heartbeat_server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5173/api/product/auth/session > /dev/null; then break; fi
+            sleep 1
+          done
+          pnpm run test:product:live
+        env:
+          HEARTBEAT_TEST_URL: http://127.0.0.1:5173

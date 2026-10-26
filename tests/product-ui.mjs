@@ -18,7 +18,7 @@ globalThis.fetch=async(url,options={})=>{const path=String(url),body=options.bod
  if(path.startsWith('/api/context'))return Response.json({context:{temperature:9,observedAt:Date.now(),fetchedAt:Date.now(),weatherCode:3,isDay:null},serverTime:Date.now()});
  if(path==='/api/ai/status')return Response.json({configured:false,authorized:false,available:false,reason:'Fixture: no inference'});
  if(path==='/api/product/auth/session')return Response.json({user:{id:'fixture-account',email:'you@example.test',verified:true},local:true,access:{plan,allowance:plan==='trial'?3:120,used:1},billingReady:false});
- if(path==='/api/product/preferences'){if(body){preferences=body.preferences;saveCount++;return Response.json({saved:true});}return Response.json({preferences,memory:null});}
+ if(path==='/api/product/preferences'){if(body){preferences=body.preferences;saveCount++;return Response.json({saved:true,preferences,version:saveCount});}return Response.json({preferences,memory:null,version:saveCount,surface:{owner_id:'fixture-account'}});}
  if(path==='/api/product/library')return Response.json({pictures:[{id:'picture-one',title:'Rain-softened water',url:'/api/ai/art/picture-one',phase:'day',createdAt:Date.now(),favourite:liked,reason:'A subdued afternoon.'}]});
  if(path==='/api/product/favourite'){liked=body.favourite;return Response.json({saved:true});}
  if(path==='/api/product/devices')return Response.json({devices:[]});

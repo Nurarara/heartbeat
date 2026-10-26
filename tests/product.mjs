@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {fixture} from './product-fixture.mjs';
 import {hash} from '../lib/product/core.ts';
 import {aiService} from '../lib/ai/service.ts';
+import {processAccountDeletions} from '../lib/product/lifecycle.ts';
 import {runArtworkJob} from '../lib/product/jobs.ts';
 import {planMoment} from '../lib/ambient-director.ts';
 import {proposeCreativeMoment} from '../lib/creative.ts';
@@ -17,10 +18,10 @@ try {
  assert.equal((await f.call('auth/session',undefined,{cookie:alice.cookie})).status,200);
  assert.equal((await f.call('preferences',{preferences},{cookie:alice.cookie})).status,200);
  assert.equal((await (await f.call('preferences',undefined,{cookie:bob.cookie})).json()).preferences,null);
- assert.equal((await f.call('preferences',{preferences:{...preferences,location:{...preferences.location,latitude:999}}},{cookie:alice.cookie})).status,400);
+ assert.equal((await f.call('preferences',{preferences:{...preferences,location:{...preferences.location,latitude:999}},expectedVersion:1},{cookie:alice.cookie})).status,400);
  assert.equal((await f.call('checkout',{plan:'atelier'},{cookie:alice.cookie})).status,503);
  // Durable job creation is unique across concurrent requests; no inference occurs here.
- let starts=0;f.env.ARTWORK_WORKFLOW={create:async()=>{starts++;},get:async()=>({status:async()=>({status:'running'})})};
+ let starts=0;const workflowIds=new Set();f.env.ARTWORK_WORKFLOW={create:async({id})=>{starts++;workflowIds.add(id);},get:async(id)=>{if(!workflowIds.has(id))throw new Error('missing');return {status:async()=>({status:'running'})};}};
  const requestId=crypto.randomUUID();const input={requestId,location:preferences.location,force:true};
  const jobs=await Promise.all(Array.from({length:4},()=>f.call('generation',input,{cookie:alice.cookie})));
  assert.ok(jobs.every(r=>r.status===202));assert.equal(starts,1);
@@ -38,16 +39,17 @@ try {
  assert.equal((await (await f.call('library',undefined,{cookie:alice.cookie})).json()).pictures[0].favourite,true);
  const ai=aiService(f.env,dependencies),aiCall=(path,body,cookie=alice.cookie)=>ai.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/${path}`,{method:body?'POST':'GET',headers:{Origin:f.env.HEARTBEAT_APP_ORIGIN,Cookie:cookie,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));
  assert.equal((await aiCall(`art/${picture.id}`,null,bob.cookie)).status,404);
- for(let i=0;i<2;i++){f.advance(3600000);assert.equal((await (await aiCall('prepare',{...input,requestId:crypto.randomUUID()})).json()).status,'ready');}
- f.advance(3600000);const quota=await (await aiCall('prepare',{...input,requestId:crypto.randomUUID(),plan:'atelier'})).json();assert.equal(quota.status,'held');assert.equal(direct,3,'Browser plan fields cannot override account allowances');
+ for(let i=0;i<2;i++){f.advance(3600000);const id=crypto.randomUUID();assert.equal((await f.call('generation',{...input,requestId:id},{cookie:alice.cookie})).status,202);const row=f.sqlite.prepare('SELECT id FROM hb_jobs WHERE request_id=?').get(id);await runArtworkJob(f.env,row.id,dependencies);assert.equal((await (await f.call(`generation?requestId=${id}`,undefined,{cookie:alice.cookie})).json()).status,'ready');}
+ f.advance(3600000);assert.equal((await f.call('generation',{...input,requestId:crypto.randomUUID(),plan:'atelier'},{cookie:alice.cookie})).status,429);assert.equal(direct,3,'Browser plan fields cannot override account allowances');
+ assert.equal((await aiCall('prepare',{...input,requestId:crypto.randomUUID()})).status,403,'Direct account preparation cannot bypass durable jobs');
  const limited=aiService({...f.env,HEARTBEAT_AI_DAILY_LIMIT:'3'},dependencies);
  const statusFor=async cookie=>(await limited.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/status`,{headers:{Cookie:cookie}}))).json();
  const capacity=await statusFor(bob.cookie);assert.equal(capacity.available,false);assert.match(capacity.reason,/Daily generation capacity/);assert.equal(capacity.capacityResetAt,Date.parse('2026-10-22T00:00:00Z'));
  const allowance=await statusFor(alice.cookie);assert.match(allowance.reason,/picture allowance/);assert.equal(allowance.capacityResetAt,undefined,'A shared-cap reset must not promise renewed customer allowance');
  const charlie=await f.register('charlie@example.test');
- const failedService=aiService(f.env,{...dependencies,provider:()=>({direct:async()=>{throw new Error('Mock provider failure');},generate:async()=>{throw new Error('Must not generate');}})});
- const failure=await failedService.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/prepare`,{method:'POST',headers:{Origin:f.env.HEARTBEAT_APP_ORIGIN,Cookie:charlie.cookie,'Content-Type':'application/json'},body:JSON.stringify({...input,requestId:crypto.randomUUID()})}));assert.equal((await failure.json()).status,'failed');
- assert.equal((await (await f.call('auth/session',undefined,{cookie:charlie.cookie})).json()).access.used,0,'A failed preparation spends the operating attempt but returns the customer picture allowance');
+ await f.call('preferences',{preferences},{cookie:charlie.cookie});const failureId=crypto.randomUUID();await f.call('generation',{...input,requestId:failureId},{cookie:charlie.cookie});const failureJob=f.sqlite.prepare('SELECT id FROM hb_jobs WHERE request_id=?').get(failureId);
+ const {ProviderFailure}=await import('../lib/ai/cloudflare.ts');await runArtworkJob(f.env,failureJob.id,{...dependencies,provider:()=>({direct:async()=>{throw new ProviderFailure('configuration',false,400);},generate:async()=>{throw new Error('Must not generate');}})});
+ assert.equal((await (await f.call('auth/session',undefined,{cookie:charlie.cookie})).json()).access.used,0,'Known rejected preparation releases customer picture allowance');
  // Device tokens have a narrower scope than account sessions and are revocable.
  const pairing=await (await f.call('device/start',{})).json();assert.match(pairing.code,/^\d{6}$/);
  assert.equal((await (await f.call('device/status',undefined,{headers:{Authorization:`Bearer ${pairing.token}`}})).json()).paired,false);
@@ -84,6 +86,6 @@ try {
  const cookie=login.headers.get('set-cookie').split(';')[0];
  assert.equal((await p.call('account/delete',{password:'wrong'},{cookie})).status,403);
  assert.equal((await p.call('account/delete',{password:'another long password'},{cookie})).status,200);
- assert.equal(p.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_users').get().n,0);
+ assert.equal((await p.call('library',undefined,{cookie})).status,401);await processAccountDeletions(p.env,p.now()+300000);assert.equal(p.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_users').get().n,0);
  console.log('Passed production verification gate, one-use verification/reset links, reset revokes all sessions, HTTPS secure cookies and password-confirmed account deletion. No email sent.');
 }finally{p.close();}

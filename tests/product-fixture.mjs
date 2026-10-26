@@ -11,5 +11,5 @@ export async function fixture(options={}) {
  const service=productService(env,{now:()=>at,fetcher});
  async function call(path,body,config={}) {const origin=config.urlOrigin||env.HEARTBEAT_APP_ORIGIN;return service.handle(new Request(`${origin}/api/product/${path}`,{method:config.method||(body===undefined?'GET':'POST'),headers:{Origin:config.origin||origin,'Content-Type':'application/json',...(config.cookie?{Cookie:config.cookie}:{}),...config.headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));}
  async function register(address='alice@example.test') {const response=await call('auth/register',{email:address,password:'a long test password'});if(response.status!==200)throw new Error(`Registration failed: ${await response.text()}`);return {cookie:response.headers.get('set-cookie').split(';')[0],data:await response.json()};}
- return {sqlite,env,objects,calls,emails,service,call,register,now:()=>at,advance:ms=>at+=ms,close:()=>sqlite.close()};
+ return {sqlite,env,objects,calls,emails,service,call,register,fetcher,now:()=>at,advance:ms=>at+=ms,close:()=>sqlite.close()};
 }
