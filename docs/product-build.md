@@ -1,4 +1,6 @@
-# Heartbeat application build — 26 October 2026
+# Heartbeat application build — 27 October 2026
+
+Current entry points: `/demo` is the public ten-image recording player (prepared art, ten-second changes, no provider calls); `/onboarding` guides a signed-in customer through city, art language and optional fullscreen entry. See [the current setup checklist](launch-setup.md), [system design](system-design.md) and [latest validation](architecture-validation.md). Stripe setup was explicitly skipped. Email, hosted staging and live billing remain operator work.
 
 This is a working local application and an unsigned Windows companion build. It has not been published, charged a customer, or been qualified as a production service.
 
@@ -10,7 +12,7 @@ After updating this checkout, run `npm run build` then `npm run product:prepare`
 
 Run `npm run dev` and open **http://localhost:5173/**. The home page is now the product landing page, with interactive curated previews that never request inference. Create a Heartbeat account using an email and a password of at least 12 characters. In this checkout, explicit development mode permits unverified accounts only on HTTP loopback. It does not send verification emails or take payments.
 
-Choose your city in the studio, select a preferred visual language in Atmosphere, then open the display. The account session connects AI automatically. Customers never enter provider tokens or the old shared display key. Earlier study/prototype routes require `HEARTBEAT_LEGACY_ROUTES_ENABLED=true` in HTTP loopback development; they are blocked by default and on hosted targets.
+New accounts choose a city and preferred visual language in guided onboarding, then enter the display. Existing preferences remain editable in the studio. The account session connects AI automatically. Customers never enter provider tokens or the old shared display key. Earlier study/prototype routes require `HEARTBEAT_LEGACY_ROUTES_ENABLED=true` in HTTP loopback development; they are blocked by default and on hosted targets.
 
 Routes:
 
@@ -18,6 +20,8 @@ Routes:
 | --- | --- |
 | `/` | Product introduction and curated atmosphere previews |
 | `/auth` | Register, sign in, verify email and reset password |
+| `/onboarding` | City, art language, verification/plan continuation and fullscreen entry |
+| `/demo` | Ten prepared original artworks; recording-only 10-second cadence |
 | `/app` | Account-owned studio, city/preferences, library/favourites, devices and billing |
 | `/display` | Minimal ambient artwork, time, temperature and optional feedback |
 | `/pricing` | Trial and memberships; actual configured Stripe prices when enabled |
@@ -48,7 +52,7 @@ The real inference and earlier visual/soak evidence below is historical, from be
 - Two live operating attempts exercised account → local Workflow emulator → real Cloudflare director/image generation → private storage/retrieval. Inspection of the first found a pencil-style picture too bright for night (mean ~0.402), which prompted the server quality guard and stronger night instructions. The second, **Moonlit Library Sanctum**, passed: mean brightness ~0.219 wide, ~0.254 portrait and ~0.229 full frame. The final JPEG is `outputs/product-workflow-live.jpg`. The quality regression is retained as a test fixture. No browser display ACK was fabricated. Test accounts were removed and the spent operating ledger retained. The cap was not increased.
 - `npm run desktop:build` compiles `outputs/desktop/Heartbeat.exe` and `Heartbeat.scr`; self-tests cover allowed origins, screensaver arguments, dark/bright sampling and current-user DPAPI encryption. The build changes no wallpaper, startup or screensaver setting.
 
-Browser inventory exposed no controllable browser or native window. No browser screenshots, real layout/device rendering, actual wallpaper changes, native screensaver preview/lock behaviour or unattended overnight use were verified. Passing a simulated DOM, local Workflow emulator or compiler is not evidence of those outcomes.
+The earlier browser-access limitation was resolved on 27 October with an isolated real Chrome session. Demo and onboarding were captured at phone/tablet/desktop sizes, with ultrawide/4K browser windows for the player; the report found no horizontal overflow or broken images. Real fullscreen entry and ten-second progression were checked. Physical phones, OS wallpaper/screensaver behavior, overnight comfort, hosted load and reference-site fidelity remain separate qualification; see `design-qa.md`.
 
 ## Activate real email and subscriptions
 

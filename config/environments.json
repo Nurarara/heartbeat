@@ -1,5 +1,6 @@
 {
   "staging": {
+    "billingEnabled": false,
     "name": "heartbeat-staging",
     "origin": "https://staging.example.invalid",
     "databaseName": "heartbeat-staging",
@@ -13,6 +14,7 @@
     "providerConcurrency": 2
   },
   "production": {
+    "billingEnabled": false,
     "name": "heartbeat-production",
     "origin": "https://example.invalid",
     "databaseName": "heartbeat-production",

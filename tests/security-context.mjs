@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {pbkdf2Sync} from 'node:crypto';
+import nodeCrypto from 'node:crypto';
+import {syncBuiltinESMExports} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {build} from 'esbuild';
 import {fixture} from './product-fixture.mjs';
@@ -16,8 +18,8 @@ const old=`pbkdf2.100000.${salt}.${pbkdf2Sync(password,salt,100000,32,'sha256').
 const began=performance.now(),modern=await passwordHash(password,salt),hashMilliseconds=performance.now()-began;
 assert.match(modern,new RegExp(`^pbkdf2-sha256\\.v1\\.${PASSWORD_ITERATIONS}\\.`));
 assert.equal(modern.split('.').at(-1),pbkdf2Sync(password,salt,PASSWORD_ITERATIONS,32,'sha256').toString('hex'),'The JS implementation matches independent native PBKDF2-SHA256 output.');
-const deriveBits=crypto.subtle.deriveBits;
-try{crypto.subtle.deriveBits=async()=>{throw new DOMException('Pbkdf2 iteration count exceeds the hosted runtime cap.','NotSupportedError');};assert.equal(await passwordHash(password,salt),modern,'Strong hashing must not depend on the hosted WebCrypto iteration limit.');}finally{crypto.subtle.deriveBits=deriveBits;}
+const deriveBits=crypto.subtle.deriveBits,nativeDerive=nodeCrypto.pbkdf2;
+try{crypto.subtle.deriveBits=async()=>{throw new DOMException('Pbkdf2 iteration count exceeds the hosted runtime cap.','NotSupportedError');};nodeCrypto.pbkdf2=(...args)=>queueMicrotask(()=>args.at(-1)(new DOMException('Pbkdf2 iteration count exceeds the hosted runtime cap.','NotSupportedError')));syncBuiltinESMExports();assert.equal(await passwordHash(password,salt),modern,'Strong hashing retains all iterations when native and WebCrypto derivation are unsupported.');}finally{crypto.subtle.deriveBits=deriveBits;nodeCrypto.pbkdf2=nativeDerive;syncBuiltinESMExports();}
 assert.equal(await passwordMatches(password,old),true);
 assert.equal(await passwordMatches(password,modern),true);
 assert.equal(await passwordMatches('wrong password',modern),false);
@@ -68,7 +70,7 @@ assert.equal(calls,1,'Concurrent matching observations share a bounded upstream 
 assert.ok(observations.every(c=>c.temperature===7&&!c.stale));
 const fetchedAt=observations[0].fetchedAt;now+=120000;
 assert.equal((await weather.collect(london)).fetchedAt,fetchedAt,'Cache reads preserve actual retrieval time.');assert.equal(calls,1);
-assert.equal(seen[0].options.redirect,'error');assert.equal(new URL(seen[0].url).hostname,'customer-api.open-meteo.com');
+assert.equal(seen[0].options.redirect,'manual');assert.equal(new URL(seen[0].url).hostname,'customer-api.open-meteo.com');
 assert.equal(new URL(seen[0].url).searchParams.get('latitude'),'51.508');
 assert.equal(JSON.stringify(observations[0]).includes(env.HEARTBEAT_WEATHER_API_KEY),false);
 assert.equal(observations[0].provenance.provider,'open-meteo-commercial');
@@ -153,7 +155,7 @@ assert.equal(operatorStudyAllowed(new Request('http://localhost:5173'),{HEARTBEA
 assert.equal(operatorStudyAllowed(new Request('http://localhost:5173'),{HEARTBEAT_APP_MODE:'development',HEARTBEAT_APP_ORIGIN:'https://heartbeat.example',HEARTBEAT_LEGACY_ROUTES_ENABLED:'true'}),false);
 assert.equal(operatorStudyAllowed(new Request('https://heartbeat.example'),{HEARTBEAT_APP_MODE:'production',HEARTBEAT_LEGACY_ROUTES_ENABLED:'true'}),false);
 for(const name of ['staging','production','arbitrary'])assert.throws(()=>validateReleaseConfiguration({staging:{name:'placeholder'},production:{name:'placeholder'}},name),'Placeholder resources/budgets must prevent release.');
-const staging={name:'heartbeat-staging',origin:'https://staging.example.test',databaseName:'heartbeat-staging',databaseId:'11111111-1111-4111-8111-111111111111',bucketName:'heartbeat-staging-art',workflowName:'heartbeat-staging-artwork',dailyAttemptLimit:3,dailyBudgetMicros:1000000,directorEstimateMicros:100,imageEstimateMicros:1000,providerConcurrency:2};
+const staging={billingEnabled:false,name:'heartbeat-staging',origin:'https://staging.example.test',databaseName:'heartbeat-staging',databaseId:'11111111-1111-4111-8111-111111111111',bucketName:'heartbeat-staging-art',workflowName:'heartbeat-staging-artwork',dailyAttemptLimit:3,dailyBudgetMicros:1000000,directorEstimateMicros:100,imageEstimateMicros:1000,providerConcurrency:2};
 const production={...staging,name:'heartbeat-production',origin:'https://app.example.test',databaseName:'heartbeat-production',databaseId:'22222222-2222-4222-8222-222222222222',bucketName:'heartbeat-production-art',workflowName:'heartbeat-production-artwork'};
 assert.equal(validateReleaseConfiguration({staging,production},'staging'),staging);
 const built={name:staging.name,vars:{HEARTBEAT_DEPLOYMENT_ENV:'staging',HEARTBEAT_APP_MODE:'production',HEARTBEAT_APP_ORIGIN:staging.origin,HEARTBEAT_BILLING_ENABLED:'false',HEARTBEAT_AI_DAILY_LIMIT:'3',HEARTBEAT_DAILY_BUDGET_MICROS:'1000000',HEARTBEAT_DIRECTOR_ESTIMATE_MICROS:'100',HEARTBEAT_IMAGE_ESTIMATE_MICROS:'1000',HEARTBEAT_PROVIDER_CONCURRENCY:'2'},d1_databases:[{binding:'DB',database_id:staging.databaseId,database_name:staging.databaseName}],r2_buckets:[{binding:'BUCKET',bucket_name:staging.bucketName}],workflows:[{binding:'ARTWORK_WORKFLOW',name:staging.workflowName,class_name:'HeartbeatWorkflow'}]};

@@ -3,7 +3,11 @@
 import {contextPlace,locationResults} from '../context.ts';
 import type {Context,Place} from '../world.ts';
 import type {ProductEnv} from '../product/core.ts';
-export class WeatherConfigurationError extends Error {}
+export class WeatherConfigurationError extends Error {readonly status?:number;constructor(message:string,status?:number){super(message);this.status=status;}}
+export class WeatherUnavailableError extends Error {
+ readonly category:'http'|'timeout'|'network'|'unavailable';readonly status?:number;
+ constructor(category:'http'|'timeout'|'network'|'unavailable'='unavailable',status?:number){super('Weather provider is temporarily unavailable.');this.category=category;this.status=status;}
+}
 export type WeatherContext = Context & {provenance:{version:1;provider:string;attribution:string;endpointHost:string;freshness:'fresh'|'stale';locationGrid:'0.001deg'}};
 type Entry={expires:number;fetchedAt:number;value:unknown};
 const cache=new Map<string,Entry>(),pending=new Map<string,Promise<Entry>>();
@@ -53,8 +57,8 @@ export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;
   const url=endpoint(env,kind);for(const [k,v] of params)url.searchParams.set(k,v);
   const namespace=await configScope(),key=`${namespace}:${url.origin}${url.pathname}:${kind}:${params.toString()}`,circuitKey=`${namespace}:${url.origin}`;
   const saved=cache.get(key);if(saved&&saved.expires>now())return {entry:saved,stale:false,host:url.hostname};
-  const fallback=()=>{if(kind==='forecast'&&saved&&now()-saved.fetchedAt<=STALE_TTL){const c=observation(saved.value);if(now()-c.observedAt<=OBSERVATION_MAX_AGE&&c.observedAt-now()<=300000)return {entry:saved,stale:true,host:url.hostname};}throw new Error('Weather provider is temporarily unavailable.');};
-  const inflight=pending.get(key);if(inflight){try{return {entry:await waitForCaller(inflight,signal),stale:false,host:url.hostname};}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw error;return fallback();}}
+  const fallback=(reason?:unknown)=>{if(reason instanceof WeatherConfigurationError)throw reason;if(kind==='forecast'&&saved&&now()-saved.fetchedAt<=STALE_TTL){const c=observation(saved.value);if(now()-c.observedAt<=OBSERVATION_MAX_AGE&&c.observedAt-now()<=300000)return {entry:saved,stale:true,host:url.hostname};}throw reason instanceof WeatherUnavailableError?reason:new WeatherUnavailableError();};
+  const inflight=pending.get(key);if(inflight){try{return {entry:await waitForCaller(inflight,signal),stale:false,host:url.hostname};}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw error;return fallback(error);}}
   const circuit=circuits.get(circuitKey);if(circuit&&circuit.until>now())return fallback();
   // Per-isolate backpressure bounds in-flight bodies and sockets. Hosted edge
   // and actor rate controls are still required; this is not a global quota.
@@ -62,13 +66,13 @@ export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;
   const work=(async()=>{try{
    let value:unknown;
    for(let attempt=0;attempt<2;attempt++){
-    try{const r=await fetcher(url,{signal:AbortSignal.timeout(6000),redirect:'error'});if(!r.ok)throw new Error('Weather provider unavailable.');value=await boundedJSON(r);if(kind==='forecast')observation(value);else if(!value||typeof value!=='object'||(value as {error?:unknown}).error)throw new Error('Location response was invalid.');break;}
-    catch(error){if(attempt===1)throw error;await sleep(150);}
+    try{const r=await fetcher(url.href,{signal:AbortSignal.timeout(6000),redirect:'manual'});if(!r.ok){await r.body?.cancel().catch(()=>{});if([400,401,403,404].includes(r.status))throw new WeatherConfigurationError('Weather provider rejected its configuration. Contact the operator.',r.status);throw new WeatherUnavailableError('http',r.status);}value=await boundedJSON(r);if(kind==='forecast')observation(value);else if(!value||typeof value!=='object'||(value as {error?:unknown}).error)throw new Error('Location response was invalid.');break;}
+    catch(error){if(error instanceof WeatherConfigurationError||attempt===1)throw error;await sleep(150);}
    }
    const entry={value,fetchedAt:now(),expires:now()+ttl};boundedSet(cache,key,entry);circuits.delete(circuitKey);return entry;
-  }catch{const failures=(circuits.get(circuitKey)?.failures||0)+1;boundedSet(circuits,circuitKey,{failures,until:failures>=3?now()+60000:0});throw new Error('Weather provider is temporarily unavailable.');}
+  }catch(error){if(error instanceof WeatherConfigurationError)throw error;const failures=(circuits.get(circuitKey)?.failures||0)+1;boundedSet(circuits,circuitKey,{failures,until:failures>=3?now()+60000:0});const failure=error instanceof WeatherUnavailableError?error:new WeatherUnavailableError(error instanceof DOMException&&error.name==='TimeoutError'?'timeout':'network');console.warn('Heartbeat weather dependency unavailable',{kind,category:failure.category,status:failure.status,errorType:error instanceof Error?error.name:'unknown'});throw failure;}
   finally{pending.delete(key);}})();pending.set(key,work);
-  try{return {entry:await waitForCaller(work,signal),stale:false,host:url.hostname};}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw error;return fallback();}
+  try{return {entry:await waitForCaller(work,signal),stale:false,host:url.hostname};}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw error;return fallback(error);}
  }
  return {
   async search(query:string,signal?:AbortSignal){const normalized=query.trim().slice(0,100).toLowerCase();if(normalized.length<2)return [];return locationResults((await get('search',new URLSearchParams({name:normalized,count:'7',language:'en',format:'json'}),3600000,signal)).entry.value);},

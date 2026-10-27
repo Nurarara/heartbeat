@@ -4,9 +4,10 @@ import type {User} from './auth.ts';
 import type {AccountAccess} from './access.ts';
 import {resolveArtworkInput} from './profiles.ts';
 import {cloudflareProvider,ProviderFailure} from '../ai/cloudflare.ts';
-import {createWeatherAdapter} from '../server/weather.ts';
+import {createWeatherAdapter,WeatherUnavailableError} from '../server/weather.ts';
 import {planMoment,parseStoryMemory} from '../ambient-director.ts';
 import {creativePacket,type CreativeProposal} from '../creative.ts';
+import {withScreenFraming} from '../director-contract.ts';
 import {THEME_LIBRARY} from '../creative-library.ts';
 import {localClock} from '../ambient.ts';
 import {weatherCue} from '../weather-mood.ts';
@@ -131,10 +132,12 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
    await reserveUsage(env,job.id,a,at);
    if(!ownReservation)await database.prepare('UPDATE ai_sessions SET next_at=? WHERE id=?').bind(at+a.cadence,job.owner).run();await transition(env,job,claim,'reserved',{},now());
   }else if(job.status==='reserved'){
-   const context=await (deps.context?deps.context(input.location):createWeatherAdapter(env,{now}).collect(input.location));await boundary(deps,'context_read');
+   let context:Context|null;
+   try{context=await (deps.context?deps.context(input.location):createWeatherAdapter(env,{now}).collect(input.location));}catch(error){if(!(error instanceof WeatherUnavailableError))throw error;context=null;console.warn('Heartbeat generation proceeding without weather',{jobId:job.id,category:error.category,status:error.status});}
+   await boundary(deps,'context_read');
    const memory=parseStoryMemory(input.memory,input.location,at),baseline=planMoment(input.location,context,at,memory,at,{force:true,festive:input.festive}).direction;
-   const packet=creativePacket({phase:baseline.phase,season:baseline.season,temperature:baseline.brief.temperature,weekday:baseline.brief.weekday,festive:baseline.recipe.festive,localDate:baseline.recipe.date,localTime:localClock(input.location,at).time,weather:weatherCue(context,at),preferredStyle:input.style},memory?.creative,at,at,memory?.history.map(h=>h.direction.scene)||[],memory?.history.map(h=>({title:h.direction.artwork?.title||h.direction.scene,summary:h.direction.artwork?.proposal.prompt||h.direction.brief.activity,phase:h.direction.phase}))||[]);
-   await transition(env,job,claim,'context_ready',{context:JSON.stringify({snapshot:context,baseline,packet,versions:{schema:1,prompt:1,validation:1,preferences:input.preferencesVersion,memory:input.memoryVersion,models},capturedAt:at})},now());
+   const packet=withScreenFraming(creativePacket({phase:baseline.phase,season:baseline.season,temperature:baseline.brief.temperature,weekday:baseline.brief.weekday,festive:baseline.recipe.festive,localDate:baseline.recipe.date,localTime:localClock(input.location,at).time,weather:weatherCue(context,at),preferredStyle:input.style},memory?.creative,at,at,memory?.history.map(h=>h.direction.scene)||[],memory?.history.map(h=>({title:h.direction.artwork?.title||h.direction.scene,summary:h.direction.artwork?.proposal.prompt||h.direction.brief.activity,phase:h.direction.phase}))||[]),input.framing);
+   await transition(env,job,claim,'context_ready',{context:JSON.stringify({snapshot:context,baseline,packet,versions:{schema:1,prompt:2,validation:1,preferences:input.preferencesVersion,memory:input.memoryVersion,surface:input.surfaceVersion,models},capturedAt:at})},now());
   }else if(job.status==='context_ready'){
    const operation=await reserveProviderOperation(env,job.id,'director',models.director,at);if(operation.state!=='reserved')throw new Error('unknown_provider_operation');
    await reserveOperatingAttempt(env,job.id,at);
@@ -180,7 +183,8 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
   const operations=await database.prepare("SELECT id,state FROM hb_provider_operations WHERE job_id=? AND state='submitted'").bind(job.id).all<{id:string;state:string}>();
   const ambiguous=operations.results.length>0&&!(error instanceof ProviderFailure)||String(error).includes('unknown_provider_operation');
   if(error instanceof ProductError&&[429,503].includes(error.status)&&!operations.results.length){await database.prepare('UPDATE hb_jobs SET lease=NULL,lease_until=0,error_category=?,updated_at=? WHERE id=? AND lease=?').bind(error.status===429?'queued_capacity':'dependency_unavailable',at,job.id,claim).run();return {completed:false,waiting:true};}
-  for(const op of operations.results)await settleProviderOperation(env,op.id,ambiguous?'unknown':'failed',at,error instanceof ProviderFailure?error.kind:'interrupted');
+  if(error instanceof ProviderFailure)console.warn('Heartbeat artwork provider rejected',{jobId:job.id,stage:job.status,category:error.kind,status:error.status,code:error.code,hints:error.hints});
+  for(const op of operations.results)await settleProviderOperation(env,op.id,ambiguous?'unknown':'failed',now(),error instanceof ProviderFailure?error.kind:'interrupted');
   if(!ambiguous)await settleUsage(env,job.id,'release',now());
   const state=ambiguous?'outcome_unknown':'failed';await transition(env,job,claim,state,{error:state,result:JSON.stringify({status:'failed',jobState:state,reason:ambiguous?'The provider outcome is unknown. No automatic repeat will be made.':'This picture could not be prepared. Your current artwork is kept.'})},now());
   if(!ambiguous)await reconcileKnownOperations(env,{...job,status:'failed'},now());

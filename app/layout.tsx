@@ -3,6 +3,7 @@ import "./globals.css";
 import "./ambient.css";
 import "./live-ambient.css";
 import "./product.css";
+import "./onboarding.css";
 
 export const metadata: Metadata = {
   title: "Heartbeat · Living visuals",

@@ -97,7 +97,14 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
       const result = await run(director, { messages: [{ role: 'system', content: system }, { role: 'user', content }], max_tokens: 900, temperature: .8, stream: false, response_format: { type: 'json_object' } }, 128000, options.signal);
       let value: unknown = result.response;
       try { if (typeof value === 'string') value = JSON.parse(value); return parseModelDirection(value, packet, options.mustReimagine); }
-      catch { throw new ProviderFailure('invalid-output', false); }
+      catch (error) {
+        const failure=new ProviderFailure('invalid-output',false);
+        const explanation=error instanceof Error?error.message.toLowerCase():'';
+        failure.hints=[typeof value==='string'?'director-json':'director-contract',...['theme','framing','night','hold','response'].filter(word=>explanation.includes(word))];
+        const candidate=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
+        console.warn('Heartbeat director validation rejected',{hints:failure.hints,titleLength:typeof candidate?.title==='string'?candidate.title.length:null,reasonLength:typeof candidate?.reason==='string'?candidate.reason.length:null,promptLength:typeof candidate?.prompt==='string'?candidate.prompt.length:null,promptLimit:packet.rules.maximumPromptCharacters,themeCount:Array.isArray(candidate?.themeIds)?candidate.themeIds.length:null});
+        throw failure;
+      }
     },
     async generate(direction: ModelDirection, packet: DirectorPacket, signal?: AbortSignal) {
       // FLUX schnell documents prompt/steps. Seed and landscape dimensions are not promised.

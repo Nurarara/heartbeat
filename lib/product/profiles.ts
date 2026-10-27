@@ -1,4 +1,5 @@
-import {db,ProductError,type ProductEnv} from './core.ts';
+import {db,ProductError,rate,type ProductEnv} from './core.ts';
+import {screenFraming} from '../screen-profile.ts';
 import {parsePreferences,localClock,type AmbientPreferences} from '../ambient.ts';
 import {parseStoryMemory,rememberMoment,planMoment,type StoryMemory} from '../ambient-director.ts';
 import {recordCreativeFeedback} from '../creative.ts';
@@ -28,7 +29,21 @@ export async function profileFor(env:ProductEnv,owner:string,input:{worldId?:unk
 }
 export async function resolveArtworkInput(env:ProductEnv,owner:string,input:{worldId?:unknown;surfaceId?:unknown}={},now=Date.now()) {
  const p=await profileFor(env,owner,input,now);if(!p.preferences)throw new ProductError('Choose a city in your studio first.',409);
- return {location:p.preferences.location,memory:p.memory?JSON.stringify(p.memory):null,style:p.preferences.style,festive:p.preferences.festiveTouches===true,worldId:p.worldId,surfaceId:p.surfaceId,preferencesVersion:p.version,memoryVersion:p.memoryVersion,surfaceVersion:p.surface.version};
+ return {location:p.preferences.location,memory:p.memory?JSON.stringify(p.memory):null,style:p.preferences.style,festive:p.preferences.festiveTouches===true,worldId:p.worldId,surfaceId:p.surfaceId,preferencesVersion:p.version,memoryVersion:p.memoryVersion,surfaceVersion:p.surface.version,framing:screenFraming(p.surface.width,p.surface.height)};
+}
+export async function updateSurfaceProfile(env:ProductEnv,owner:string,input:Record<string,unknown>,now:number,expectedCredentialEpoch:number) {
+ const framing=typeof input.width==='number'&&typeof input.height==='number'?screenFraming(input.width,input.height):null;
+ if(!framing)throw new ProductError('Choose a valid screen size.');
+ if(!Number.isSafeInteger(input.expectedVersion)||Number(input.expectedVersion)<1)throw new ProductError('Reload this screen before updating its size.',409);
+ const profile=await profileFor(env,owner,input,now);
+ const current=await db(env).prepare("SELECT id FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(owner,expectedCredentialEpoch).first();
+ if(!current)throw new ProductError('Your account changed. Sign in again.',401);
+ if(profile.surface.version!==input.expectedVersion)throw new ProductError('This screen changed elsewhere. Reload its settings.',409);
+ if(profile.surface.width===framing.width&&profile.surface.height===framing.height)return {saved:true,changed:false,surfaceVersion:profile.surface.version,framing};
+ await rate(env,`surface:${owner}`,now,12,60000);
+ const changed=await db(env).prepare("UPDATE hb_surfaces SET width=?,height=?,version=version+1,updated_at=? WHERE id=? AND owner_id=? AND world_id=? AND version=? AND EXISTS(SELECT 1 FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?)").bind(framing.width,framing.height,now,profile.surfaceId,owner,profile.worldId,input.expectedVersion,owner,expectedCredentialEpoch).run();
+ if(changed.meta.changes!==1)throw new ProductError('Your account or screen changed. Reload before trying again.',409);
+ return {saved:true,changed:true,surfaceVersion:profile.surface.version+1,framing};
 }
 export async function updatePreferences(env:ProductEnv,owner:string,input:Record<string,unknown>,now:number) {
  const p=await profileFor(env,owner,input,now);

@@ -1,0 +1,39 @@
+"use client";
+import {useCallback,useEffect,useRef,useState} from 'react';
+import Link from 'next/link';
+import {ArrowLeft,ArrowRight,Check,Expand,Pause,Play,RotateCcw,VolumeX} from 'lucide-react';
+import {DEMO_SCENES,DEMO_INTERVAL_MS,DEMO_FADE_MS} from '@/lib/demo-scenes';
+import './recording-demo.css';
+
+export default function RecordingDemo(){
+ const root=useRef<HTMLElement>(null),images=useRef<HTMLImageElement[]>([]),started=useRef(false),timeout=useRef<ReturnType<typeof setTimeout>|null>(null),quietTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const [loaded,setLoaded]=useState(0),[failed,setFailed]=useState(false),[retry,setRetry]=useState(0),[entered,setEntered]=useState(false),[index,setIndex]=useState(0),[previous,setPrevious]=useState<number|null>(null),[paused,setPaused]=useState(false),[visible,setVisible]=useState(true),[quiet,setQuiet]=useState(false),[fullscreen,setFullscreen]=useState(false),[fit,setFit]=useState<'fill'|'whole'>('fill'),[captions,setCaptions]=useState(true),[message,setMessage]=useState('');
+ const scene=DEMO_SCENES[index],ready=loaded===DEMO_SCENES.length&&!failed;
+ const [cycle,setCycle]=useState(0);
+ useEffect(()=>{
+  let active=true;images.current=[];
+  Promise.all(DEMO_SCENES.map(async item=>{const image=new Image();image.decoding='async';image.src=item.image;await image.decode();if(!active)return;images.current.push(image);setLoaded(n=>n+1);})).catch(()=>{if(active)setFailed(true);});
+  return()=>{active=false;images.current=[];};
+ },[retry]);
+ useEffect(()=>{const change=()=>setVisible(!document.hidden);document.addEventListener('visibilitychange',change);return()=>document.removeEventListener('visibilitychange',change);},[]);
+ useEffect(()=>{if(!entered||paused||!visible)return;timeout.current=setTimeout(()=>{setPrevious(index);setIndex((index+1)%DEMO_SCENES.length);},DEMO_INTERVAL_MS);return()=>{if(timeout.current)clearTimeout(timeout.current);};},[entered,paused,visible,index,cycle]);
+ useEffect(()=>{if(previous===null)return;const id=setTimeout(()=>setPrevious(null),DEMO_FADE_MS);return()=>clearTimeout(id);},[index,previous]);
+ const reveal=useCallback(()=>{setQuiet(false);if(quietTimer.current)clearTimeout(quietTimer.current);if(entered)quietTimer.current=setTimeout(()=>setQuiet(true),2800);},[entered]);
+ useEffect(()=>{if(entered)quietTimer.current=setTimeout(()=>setQuiet(true),2800);return()=>{if(quietTimer.current)clearTimeout(quietTimer.current);};},[entered]);
+ const requestFullscreen=useCallback(()=>{try{if(document.fullscreenElement)void document.exitFullscreen().catch(()=>setMessage('Fullscreen could not close. Use Escape.'));else if(root.current?.requestFullscreen)void root.current.requestFullscreen().catch(()=>setMessage('Fullscreen is unavailable here. The demo still fills your window.'));else setMessage('This browser keeps the demo inside the window.');}catch{setMessage('Fullscreen is unavailable here.');}},[]);
+ useEffect(()=>{const sync=()=>setFullscreen(!!document.fullscreenElement);document.addEventListener('fullscreenchange',sync);return()=>document.removeEventListener('fullscreenchange',sync);},[]);
+ function move(delta:number){setPrevious(index);setIndex((index+delta+DEMO_SCENES.length)%DEMO_SCENES.length);setMessage('');reveal();}
+ function enter(){if(!ready||started.current)return;started.current=true;setEntered(true);requestFullscreen();}
+ useEffect(()=>{if(!entered)return;const keyboard=(e:KeyboardEvent)=>{if(e.target instanceof HTMLElement&&e.target.closest('button,input,a,select'))return;if(e.key===' '){e.preventDefault();setPaused(value=>!value);reveal();}else if(e.key==='ArrowRight'){e.preventDefault();setPrevious(index);setIndex((index+1)%DEMO_SCENES.length);reveal();}else if(e.key==='ArrowLeft'){e.preventDefault();setPrevious(index);setIndex((index-1+DEMO_SCENES.length)%DEMO_SCENES.length);reveal();}else if(e.key.toLowerCase()==='f')requestFullscreen();};document.addEventListener('keydown',keyboard);return()=>document.removeEventListener('keydown',keyboard);},[entered,index,requestFullscreen,reveal]);
+ useEffect(()=>{if(!message)return;const id=setTimeout(()=>setMessage(''),6000);return()=>clearTimeout(id);},[message]);
+ const layer=(number:number,old=false)=><div className={`hd-image-layer${old?' hd-previous':''}`} key={`${old?'previous':'current'}-${number}`} style={{'--hd-position':DEMO_SCENES[number].position} as React.CSSProperties}><img className="hd-image-backdrop" src={DEMO_SCENES[number].image} alt="" aria-hidden="true"/><img className="hd-image" src={DEMO_SCENES[number].image} alt={DEMO_SCENES[number].title} draggable={false}/></div>;
+ return <main ref={root} className="hd-demo" data-entered={entered} data-quiet={quiet&&!paused} data-fit={fit} onPointerMove={reveal} onPointerDown={reveal}>
+  <div className="hd-art" aria-live="off">{layer(index)}{previous!==null&&layer(previous,true)}</div><div className="hd-scrim"/>
+  {!entered?<section className="hd-intro"><Link href="/" className="hd-wordmark">heartbeat</Link><div className="hd-intro-copy"><p className="hd-mode">The recording demo</p><h1>Ten worlds.<br/>One heartbeat.</h1><p>Original prepared artwork. A smooth change every ten seconds. Ready for your screen recording.</p><button className="hd-primary" onClick={enter} disabled={!ready}>{ready?'Enter the demo':failed?'Artwork could not load':`Preparing your worlds · ${loaded} / ${DEMO_SCENES.length}`}<ArrowRight size={20}/></button>{failed&&<button className="hd-link" onClick={()=>{setLoaded(0);setFailed(false);setRetry(v=>v+1);}}>Retry artwork loading</button>}<p role="status" className="hd-loading">{ready?<><Check size={14}/> All ten images are ready. No AI requests during playback.</>:'The artwork is loaded before the timer begins.'}</p></div><div className="hd-intro-footer"><Link href="/auth?mode=register">Create your own world <ArrowRight size={15}/></Link><p>Prepared scenes illustrate time and weather. The personal product uses your own city.</p></div></section>:<>
+   <header className="hd-header hd-controls"><Link href="/" className="hd-wordmark">heartbeat</Link><Link href="/auth?mode=register" className="hd-own-world">Your own world <ArrowRight size={15}/></Link></header>
+   <p className="hd-permanent-label">Demo · prepared artwork</p>
+   {captions&&<div className="hd-readings" key={scene.id}><div className="hd-story"><p>{scene.city} <span>· {scene.weather}</span></p><h1>{scene.title}</h1><p className="hd-reason">{scene.reason}</p></div><div className="hd-clock"><time>{scene.time}</time><p>{scene.temperature}°C <span>· {scene.medium}</span></p></div></div>}
+   <footer className="hd-player hd-controls"><div className="hd-transport"><button aria-label="Previous artwork" onClick={()=>move(-1)}><ArrowLeft size={18}/></button><button aria-label={paused?'Resume demo':'Pause demo'} onClick={()=>{setPaused(v=>!v);reveal();}}>{paused?<Play size={18}/>:<Pause size={18}/>}</button><button aria-label="Next artwork" onClick={()=>move(1)}><ArrowRight size={18}/></button><button aria-label="Restart demo" onClick={()=>{setPrevious(index===0?null:index);setIndex(0);setCycle(v=>v+1);setPaused(false);reveal();}}><RotateCcw size={17}/></button><button aria-label={fullscreen?'Exit fullscreen':'Enter fullscreen'} onClick={requestFullscreen}><Expand size={18}/></button></div><div className="hd-options"><button aria-pressed={captions} onClick={()=>{setCaptions(v=>!v);reveal();}}>Captions {captions?'on':'off'}</button><button onClick={()=>{setFit(v=>v==='fill'?'whole':'fill');reveal();}}>{fit==='fill'?'Fill screen':'Whole picture'}</button></div><p><span className="hd-counter">{String(index+1).padStart(2,'0')} / {DEMO_SCENES.length}</span><span>{paused?'Paused':'10 seconds each'}</span><VolumeX size={14}/></p></footer>
+  </>}{message&&<p className="hd-message" role="status">{message}</p>}
+ </main>;
+}

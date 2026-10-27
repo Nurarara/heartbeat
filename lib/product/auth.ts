@@ -1,6 +1,8 @@
 import { db, hash, json, localDevelopment, ProductError, randomToken, rate, type ProductEnv } from './core.ts';
 import {pbkdf2Async} from '@noble/hashes/pbkdf2.js';
 import {sha256} from '@noble/hashes/sha2.js';
+import {pbkdf2 as nativePbkdf2} from 'node:crypto';
+import {safeContinuation} from '../customer-journey.ts';
 export type User = { id:string; email:string; verified:number; created_at:number; password_hash:string; lifecycle?:string; credential_epoch?:number };
 export type Auth = { user:User; expires:number };
 const COOKIE = 'heartbeat_account';
@@ -21,14 +23,28 @@ function passwordParameters(stored:string):PasswordParameters|null {
   if(!SUPPORTED_ITERATIONS.has(iterations)||String(iterations)!==parts[offset]||!/^[a-f0-9]{32}$/.test(salt)||!/^[a-f0-9]{64}$/.test(digest))return null;
   return {iterations,salt,digest,legacy};
 }
+function unsupportedPasswordDerivation(error:unknown):boolean {
+  if(!(error instanceof Error))return false;
+  if(error.name==='NotSupportedError')return true;
+  const code=(error as Error&{code?:string}).code;
+  if(code&&['ERR_METHOD_NOT_IMPLEMENTED','ERR_NOT_IMPLEMENTED','ERR_NOT_SUPPORTED','ERR_CRYPTO_UNSUPPORTED_OPERATION'].includes(code))return true;
+  return /pbkdf2.*(?:not implemented|not supported|unsupported)|(?:not implemented|not supported|unsupported).*pbkdf2|iteration(?:s| count)?.*(?:exceed|maximum|upper limit|greater than|<=\s*100000)/i.test(error.message);
+}
 async function passwordDigest(value:string,salt:string,iterations:number) {
-  // Cloudflare's hosted WebCrypto/Node PBKDF2 can cap iterations at 100000 even
-  // when the local emulator accepts 600000. Use the pinned, independently
-  // reviewed noble family implementation, retaining the standard PBKDF2 bytes
-  // and stored parameters. This is not the package's WebCrypto wrapper.
-  // Async yielding does not reduce CPU charged by Workers: hosted paid-runtime
-  // benchmarking and abuse/load qualification remain release gates.
-  const result=await pbkdf2Async(sha256,value,salt,{c:iterations,dkLen:32,asyncTick:8});
+  let result:Uint8Array;
+  try {
+    // Native async PBKDF2 avoids the JS hot loop when the runtime supports the
+    // configured work factor. The stored algorithm, bytes and iterations stay
+    // identical; unexpected native errors are surfaced instead of hidden.
+    result=await new Promise<Uint8Array>((resolve,reject)=>nativePbkdf2(value,salt,iterations,32,'sha256',(error,bytes)=>error?reject(error):resolve(bytes)));
+  }catch(error){
+    if(!unsupportedPasswordDerivation(error))throw error;
+    // Some hosted runtimes impose a 100k native/WebCrypto cap. The pure-JS
+    // implementation still performs the full requested 600k (or legacy 100k),
+    // never the WebCrypto wrapper or a lower work factor. Hosted CPU and load
+    // qualification remain necessary even though local native hashing is faster.
+    result=await pbkdf2Async(sha256,value,salt,{c:iterations,dkLen:32,asyncTick:8});
+  }
   try{return Array.from(result,v=>v.toString(16).padStart(2,'0')).join('');}finally{result.fill(0);}
 }
 export async function passwordHash(value:string, salt = randomToken().slice(0,32)) {
@@ -58,12 +74,13 @@ export async function session(request:Request,env:ProductEnv,user:User,now:numbe
   return json({user:publicUser(user),local:localDevelopment(request,env)},200,{'Set-Cookie':`${secure?'__Host-heartbeat_account':COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure?'; Secure':''}`});
 }
 export async function revoke(request:Request,env:ProductEnv) { const secure=new URL(request.url).protocol==='https:',name=secure?'__Host-heartbeat_account':COOKIE;const token=request.headers.get('cookie')?.match(new RegExp(`(?:^|;\\s*)${name}=([a-f0-9]{64})(?:;|$)`))?.[1];if(token)await db(env).prepare('DELETE FROM hb_sessions WHERE hash=?').bind(await hash(token)).run();return json({signedOut:true},200,{'Set-Cookie':`${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure?'; Secure':''}`}); }
-export async function sendToken(env:ProductEnv,user:User,kind:'verify'|'reset',now:number,fetcher:typeof fetch=fetch) {
+export async function sendToken(env:ProductEnv,user:User,kind:'verify'|'reset',now:number,fetcher:typeof fetch=fetch,continuation?:string) {
   if(!env.HEARTBEAT_EMAIL_API_KEY||!env.HEARTBEAT_EMAIL_FROM)throw new ProductError('Email delivery is not configured yet.',503);
   await rate(env,'mail:global',now,100,60000);
   await rate(env,`mail:${kind}:${user.id}`,now,3);
   const token=randomToken(); await db(env).prepare('INSERT INTO hb_tokens(hash,user_id,kind,expires) VALUES (?,?,?,?)').bind(await hash(token),user.id,kind,now+30*60000).run();
   const link=new URL('/auth',env.HEARTBEAT_APP_ORIGIN);link.searchParams.set(kind,token);
+  if(continuation)link.searchParams.set('next',safeContinuation(continuation));
   const response=await fetcher('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:env.HEARTBEAT_EMAIL_FROM,to:[user.email],subject:kind==='verify'?'Welcome to Heartbeat — verify your email':'Reset your Heartbeat password',text:`${kind==='verify'?'Verify your email':'Reset your password'}: ${link.href}\nThis link expires in 30 minutes. If you did not request this, ignore it.`}),signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new ProductError('Email could not be delivered. Please try again later.',503);
 }

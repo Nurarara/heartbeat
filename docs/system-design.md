@@ -1,6 +1,30 @@
 # Heartbeat: current system design
 
-Updated 26 October 2026 against the local architecture implementation. The code supports the following design; hosted production and third-party acceptance remain unqualified. See [requirement coverage and remaining gates](architecture-changes.md).
+Updated 27 October 2026 against the local architecture implementation. The code supports the following design; hosted production and third-party acceptance remain unqualified. See [requirement coverage and remaining gates](architecture-changes.md) and [operator setup](launch-setup.md).
+
+## Customer entry and recording mode
+
+```mermaid
+flowchart LR
+    LAND[Landing] --> DEMO["Public /demo\nTen prepared WebP artworks\n10-second timer / decode / crossfade"]
+    FILES["Public prepared image files\nNo private customer artwork"] --> DEMO
+    LAND --> AUTH["Account / verification\nSafe journey continuation"]
+    AUTH --> SETUP["/onboarding\nCity / art language / ready"]
+    SETUP -->|Explicit purchase only when configured| PAY[Stripe hosted Checkout]
+    PAY -->|Return + server entitlement poll| SETUP
+    SETUP -->|Click: optional fullscreen, same shell| DISPLAY["/display\nImmediate illustrated first frame"]
+    DISPLAY -->|Private account session| API[Heartbeat APIs]
+    API -->|Canonical prefs + coarse screen class| JOB["Durable personal generation\nNormal budgets and cadence"]
+    JOB -->|Private JPEG, decode then display| DISPLAY
+```
+
+The recording route needs no account, email or payment configuration. It loads all ten original prepared images before starting and makes no account, weather, billing or inference requests during playback. Its weather/time labels are recorded examples, with a persistent prepared-demo label. It does not alter normal generation cadence, personal history or the three-attempt local operating safeguard. Original PNGs and optimized WebPs are versioned under `public/demo/art`; prompts/provenance are in `docs/demo-art-a.json` and `docs/demo-art-b.json`.
+
+Personal onboarding saves canonical preferences with version checks, preserves a selected plan through authentication/email links, and enters the ambient player without a navigation that would discard the fullscreen gesture. Fullscreen still requires a user click and browser support. Paid-plan previews remain unavailable while billing is disabled; no return URL grants membership.
+
+The authenticated surface endpoint records normalized aspect/resolution classes using ownership, lifecycle and version checks. Unchanged classes cause no database writes. Resize publication is debounced and never requests generation. New director packets use the screen class for composition and crop safety; the current model output is not a native 4K/portrait-resolution promise. Default surfaces remain shared across an account; independent device surfaces and native mobile apps are future work.
+
+The weather adapter uses manual redirects because Workerd rejects `redirect: 'error'`. Redirect responses fail without being followed. A typed upstream outage may fall back to known time/season with weather explicitly unknown; configuration and unexpected failures still fail closed. Provider 400/401/403/404 responses are configuration failures, without retries or stale-weather substitution. Customer/hosted browsers cannot bypass this adapter with a free-provider fallback; that fallback is limited to the noncustomer HTTP-loopback study. Real Workerd and React regression tests cover these boundaries.
 
 ## System and trust boundaries
 
@@ -142,7 +166,7 @@ Account deletion cannot race an open/confirming Checkout or a live checkout/reco
 | Account/device session | HTTP-only cookie / DPAPI-scoped token | Hashed server record, expiry and credential epoch | Its own session only |
 | Old display access key | Explicit local study only | Disabled customer/hosted path | No |
 
-`config/environments.json` contains distinct target resource names and deliberately unusable placeholder IDs/origins with zero monetary budget. It contains no real secrets. `scripts/release-config.mjs` rejects missing isolation or unapproved operating settings. The release workflow requires protected GitHub environments, a reviewed exact commit and, for production, a successful staging release of that same commit plus recorded acceptance. It uploads code and secrets together, with billing disabled. Resources, reviewers, secret configuration and actual release runs are still operator setup.
+`config/environments.json` contains distinct target resource names and deliberately unusable placeholder IDs/origins with zero monetary budget. It contains no real secrets. `scripts/release-config.mjs` rejects missing isolation or unapproved operating settings. Each target explicitly sets `billingEnabled`, currently false. The release workflow requires protected GitHub environments, a reviewed exact commit and, for production, a successful staging release of that same commit plus recorded acceptance. It uploads code and secrets together; activation validates required Stripe fields, distinct Prices and environment-appropriate key modes before migrations. Staging rejects live keys. Resources, reviewers, secret configuration and actual release runs are still operator setup. Stripe provisioning was explicitly skipped for this demo.
 
 ## Operations and evidence limits
 

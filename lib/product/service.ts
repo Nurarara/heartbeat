@@ -3,7 +3,7 @@ import { accessFor } from './access.ts';
 import { billingReady, checkout, portal, webhook, priceCatalog } from './billing.ts';
 import { checkOrigin, db, hash, json, localDevelopment, PLANS, ProductError, rate, readJSON } from './core.ts';
 import { generation, type JobEnv } from './jobs.ts';
-import {profileFor,updatePreferences,acknowledgeDisplay,ensureDefaultWorld} from './profiles.ts';
+import {profileFor,updatePreferences,updateSurfaceProfile,acknowledgeDisplay,ensureDefaultWorld} from './profiles.ts';
 import {beginAccountDeletion} from './lifecycle.ts';
 import {recoverBilling,cancelPendingCheckout,processBillingInbox} from './billing-recovery.ts';
 import { deviceRoute } from './devices.ts';
@@ -30,11 +30,11 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
      const user:User={id:crypto.randomUUID(),email:address,password_hash:await passwordHash(input.password),verified:0,created_at:now};
      try {await db(env).batch([db(env).prepare('INSERT INTO hb_users(id,email,password_hash,verified,created_at) VALUES (?,?,?,?,?)').bind(user.id,address,user.password_hash,0,now),db(env).prepare('INSERT INTO hb_billing(user_id) VALUES (?)').bind(user.id)]);}catch{throw new ProductError('An account cannot be created with these details. Try signing in.',409);}
      await ensureDefaultWorld(env,user.id,now);
-     if(!local)try{await sendToken(env,user,'verify',now,fetcher);}catch{/* Account remains usable for resending verification; generation stays locked. */}
+     if(!local)try{await sendToken(env,user,'verify',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);}catch{/* Account remains usable for resending verification; generation stays locked. */}
      return await session(request,env,user,now);
     }
     const user=await db(env).prepare('SELECT * FROM hb_users WHERE email=?').bind(address).first<User>();
-    if(path==='auth/forgot') {if(user)try{await sendToken(env,user,'reset',now,fetcher);}catch{/* Do not disclose whether the address exists. */}return json({message:'If an account exists and email delivery is available, a reset link is on its way.'});}
+    if(path==='auth/forgot') {if(user)try{await sendToken(env,user,'reset',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);}catch{/* Do not disclose whether the address exists. */}return json({message:'If an account exists and email delivery is available, a reset link is on its way.'});}
     if(typeof input.password!=='string'||input.password.length>128)throw new ProductError('Email or password did not match.',401);
     const matches=await passwordMatches(input.password,user?.password_hash||'missing-account');if(!user||!matches||(user.lifecycle??'active')!=='active')throw new ProductError('Email or password did not match.',401);
     if(passwordNeedsRehash(user.password_hash))await db(env).prepare('UPDATE hb_users SET password_hash=? WHERE id=? AND password_hash=? AND credential_epoch=?').bind(await passwordHash(input.password),user.id,user.password_hash,user.credential_epoch||0).run();
@@ -59,11 +59,12 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    }
    if(path==='auth/logout'&&request.method==='POST')return await revoke(request,env);
    const auth=await requireAuth(request,env,now),user=auth.user;
-   if(path==='auth/resend'&&request.method==='POST') {await rate(env,`verify:${user.id}`,now,2);await sendToken(env,user,'verify',now,fetcher);return json({message:'Verification email sent.'});}
+   if(path==='auth/resend'&&request.method==='POST') {await rate(env,`verify:${user.id}`,now,2);const input=await readJSON(request,4096);await sendToken(env,user,'verify',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);return json({message:'Verification email sent.'});}
    if(path==='preferences') {
     if(request.method==='GET')return json(await profileFor(env,user.id,{},now));
     if(request.method==='POST')return json(await updatePreferences(env,user.id,await readJSON(request,20000),now));
    }
+   if(path==='surface'&&request.method==='POST')return json(await updateSurfaceProfile(env,user.id,await readJSON(request,2048),now,user.credential_epoch||0));
    if(path==='display'&&request.method==='POST')return json(await acknowledgeDisplay(env,user.id,await readJSON(request,2048),now));
    if(path==='feedback'&&request.method==='POST'){const input=await readJSON(request,2048);if(input.preference!=='more'&&input.preference!=='less')throw new ProductError('Choose more or less.');return json(await acknowledgeDisplay(env,user.id,input,now,input.preference));}
    if(path==='billing/recover'&&request.method==='POST'){await rate(env,`billing-recover:${user.id}`,now,6,60000);await processBillingInbox(env,{now,fetcher,limit:5});return json(await recoverBilling(user,env,now,fetcher));}

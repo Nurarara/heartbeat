@@ -1,25 +1,56 @@
 "use client";
-import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Heart, Image as ImageIcon, LayoutGrid, LogOut, Monitor, Settings2, Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Heart, Image as ImageIcon, LayoutGrid, LogOut, Monitor, Settings2, Sparkles, X } from 'lucide-react';
 import { Brand, productAPI } from './product-shell';
 import type { AmbientPreferences } from '@/lib/ambient';
 import type { Place } from '@/lib/world';
 import type { StoryMemory } from '@/lib/ambient-director';
 import LiveHeartbeat from '@/app/live-heartbeat';
+import { afterAuthentication, authDestination, onboardingDestination, readJourney, type Journey } from '@/lib/customer-journey';
+import type {ScreenIdentity} from '@/hooks/use-screen-profile';
 type Account={user:{id:string;email:string;verified:boolean};access:{plan:string;allowance:number;used:number;eligible:boolean;reason:string};local:boolean;billingReady:boolean};
 type Picture={id:string;title:string;url:string;phase:string;createdAt:number;favourite:boolean;reason:string};
 const storageKeys=['heartbeat.ambient.v1','heartbeat.story.v1','heartbeat.creative.v1','heartbeat.ai-request.v1','heartbeat.account.owner'];
 function clearAccountStorage(){try{storageKeys.forEach(k=>localStorage.removeItem(k));}catch{/* Storage can be unavailable; account operations still succeed. */}}
-export function AuthPage(){const [mode,setMode]=useState('login'),[address,setAddress]=useState(''),[secret,setSecret]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[token,setToken]=useState(''),[local,setLocal]=useState(false);
- useEffect(()=>{const p=new URLSearchParams(location.search);setMode(p.has('reset')?'reset':p.get('mode')==='register'?'register':'login');setToken(p.get('reset')||'');productAPI('auth/session').then(d=>setLocal(d.local)).catch(()=>{});if(p.has('verify')){setBusy(true);productAPI('auth/verify',{token:p.get('verify')}).then(d=>setMessage(d.message)).catch(e=>setMessage(e.message)).finally(()=>{setBusy(false);history.replaceState(null,'','/auth');});}},[]);
- async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setMessage('');try{const d=await productAPI(`auth/${mode}`,mode==='reset'?{token,password:secret}:{email:address,password:secret});if(mode==='forgot'||mode==='reset'){setMessage(d.message);if(mode==='reset'){setMode('login');setSecret('');history.replaceState(null,'','/auth');}}else{clearAccountStorage();location.href='/app';}}catch(error){setMessage((error as Error).message);}finally{setBusy(false);}}
+async function completeAuthentication(intent:Journey){const profile=await productAPI<{preferences:AmbientPreferences|null}>('preferences');clearAccountStorage();location.assign(afterAuthentication(intent,!!profile.preferences));}
+export function AuthPage(){
+ const [mode,setMode]=useState('login'),[address,setAddress]=useState(''),[secret,setSecret]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[token,setToken]=useState(''),[local,setLocal]=useState(false);
+ const [journey,setJourney]=useState<Journey>({plan:'trial',next:null});
+ const verification=useRef<{token:string;work:Promise<{message:string}>}|null>(null);
+
+ useEffect(()=>{
+  let active=true;const params=new URLSearchParams(location.search),intent=readJourney(location.search);queueMicrotask(()=>{if(active){setJourney(intent);setMode(params.has('reset')?'reset':params.get('mode')==='register'?'register':'login');setToken(params.get('reset')||'');}});
+  productAPI('auth/session').then(value=>{if(active)setLocal(value.local);}).catch(()=>{});
+  if(params.has('verify')){
+   const verificationToken=params.get('verify')||'';
+   if(!verification.current||verification.current.token!==verificationToken)verification.current={token:verificationToken,work:productAPI<{message:string}>('auth/verify',{token:verificationToken})};
+   // StrictMode replays effects. Both subscriptions share one token consumption;
+   // only the current effect may navigate after that one-use request succeeds.
+   queueMicrotask(()=>{if(active)setBusy(true);});verification.current.work.then(async value=>{
+    if(!active)return;setMessage(value.message);
+    history.replaceState(null,'',authDestination('login',intent.next||onboardingDestination(intent.plan),intent.plan));
+    const session=await productAPI('auth/session');if(!active)return;
+    if(session.user)await completeAuthentication({...intent,next:intent.next||onboardingDestination(intent.plan)});
+   }).catch(reason=>{if(active)setMessage(reason.message);}).finally(()=>{if(active)setBusy(false);});
+  }
+  return()=>{active=false;};
+ },[]);
+ async function submit(event:React.FormEvent){
+  event.preventDefault();setBusy(true);setMessage('');
+  try{
+   const value=await productAPI(`auth/${mode}`,mode==='reset'?{token,password:secret}:{email:address,password:secret,continuation:journey.next||onboardingDestination(journey.plan)});
+   if(mode==='forgot'||mode==='reset'){setMessage(value.message);if(mode==='reset'){setMode('login');setSecret('');history.replaceState(null,'',authDestination('login',journey.next||onboardingDestination(journey.plan),journey.plan));}}
+   else await completeAuthentication(journey);
+  }catch(reason){setMessage((reason as Error).message);}finally{setBusy(false);}
+ }
+ function switchMode(next:'login'|'register'|'forgot'){setMode(next);setMessage('');history.replaceState(null,'',authDestination(next==='register'?'register':'login',journey.next||'/display',journey.plan));}
  return <div className="hp-site hp-auth"><div className="hp-auth-form"><Brand/><a href="/" className="hp-auth-back"><ArrowLeft size={14}/> Back to the world</a><p className="hp-eyebrow">YOUR OWN LITTLE CORNER</p><h1>{mode==='register'?<>Make yourself<br/><em>at home.</em></>:mode==='forgot'?<>A fresh<br/><em>start.</em></>:mode==='reset'?<>A new<br/><em>password.</em></>:<>Welcome<br/><em>back.</em></>}</h1><p>{mode==='register'?'A city. A little curiosity. A space that feels like you.':mode==='forgot'?'We’ll send a link to help you find your way back.':mode==='reset'?'Choose a password of at least 12 characters.':'Your world is waiting.'}</p>
- <form onSubmit={submit}>{mode!=='reset'&&<label>Email address<input type="email" autoComplete="email" required value={address} onChange={e=>setAddress(e.target.value)} placeholder="you@example.com"/></label>}{mode!=='forgot'&&<label>Password<input type="password" autoComplete={mode==='login'?'current-password':'new-password'} required minLength={mode==='login'?1:12} maxLength={128} value={secret} onChange={e=>setSecret(e.target.value)} placeholder={mode==='login'?'Your password':'At least 12 characters'}/></label>}<button className="hp-button" disabled={busy}>{busy?'One moment…':mode==='register'?'Create your space':mode==='forgot'?'Send reset link':mode==='reset'?'Update password':'Come on in'}<ArrowRight size={17}/></button><p className="hp-message" role="status">{message}</p></form>
- {mode==='login'&&<button className="hp-link-button" onClick={()=>{setMode('forgot');setMessage('');}}>Forgot your password?</button>}{mode!=='reset'&&<p className="hp-auth-switch">{mode==='register'?'Already have a space?':'New around here?'} <button onClick={()=>{setMode(mode==='register'?'login':'register');setMessage('');}}>{mode==='register'?'Log in':'Create an account'}</button></p>}<p className="hp-fine">By continuing, you agree to the <a href="/terms">terms</a> and <a href="/privacy">privacy information</a>.</p>{local&&<p className="hp-local-note">Local development · Email verification is bypassed only on this computer. Payments remain disabled until configured.</p>}</div><aside className="hp-auth-art"><img src="/showcase/pulse-organism.png" alt="A warm illustrated window overlooking a rainy city"/><div><p className="hp-eyebrow">SOMEWHERE BETWEEN HERE AND NOW</p><h2>A screen<br/><em>with a pulse.</em></h2><p>Let the day in. Leave the noise outside.</p></div></aside></div>;
+ <form onSubmit={submit}>{mode!=='reset'&&<label>Email address<input type="email" autoComplete="email" required value={address} onChange={event=>setAddress(event.target.value)} placeholder="you@example.com"/></label>}{mode!=='forgot'&&<label>Password<input type="password" autoComplete={mode==='login'?'current-password':'new-password'} required minLength={mode==='login'?1:12} maxLength={128} value={secret} onChange={event=>setSecret(event.target.value)} placeholder={mode==='login'?'Your password':'At least 12 characters'}/></label>}<button className="hp-button" disabled={busy}>{busy?'One moment…':mode==='register'?'Create your space':mode==='forgot'?'Send reset link':mode==='reset'?'Update password':'Come on in'}<ArrowRight size={17}/></button><p className="hp-message" role="status">{message}</p></form>
+ {mode==='login'&&<button className="hp-link-button" onClick={()=>switchMode('forgot')}>Forgot your password?</button>}{mode!=='reset'&&<p className="hp-auth-switch">{mode==='register'?'Already have a space?':'New around here?'} <button onClick={()=>switchMode(mode==='register'?'login':'register')}>{mode==='register'?'Log in':'Create an account'}</button></p>}<p className="hp-fine">By continuing, you agree to the <a href="/terms">terms</a> and <a href="/privacy">privacy information</a>.</p>{local&&<p className="hp-local-note">Local development · Email verification is bypassed only on this computer. Payments remain disabled until configured.</p>}</div><aside className="hp-auth-art"><img src="/showcase/pulse-organism.png" alt="An illustrated glass form with a warm pulse"/><div><p className="hp-eyebrow">SOMEWHERE BETWEEN HERE AND NOW</p><h2>A screen<br/><em>with a pulse.</em></h2><p>Let the day in. Leave the noise outside.</p></div></aside></div>;
 }
 function CityPicker({onChoose,onClose}:{onChoose:(p:Place)=>void;onClose:()=>void}){const [query,setQuery]=useState(''),[places,setPlaces]=useState<Place[]>([]),[error,setError]=useState('');
  const [opener]=useState(()=>document.activeElement);
- useEffect(()=>{if(query.trim().length<2){setPlaces([]);return;}const abort=new AbortController(),timer=setTimeout(()=>{fetch(`/api/locations?q=${encodeURIComponent(query)}`,{signal:abort.signal}).then(r=>r.json()).then((d:any)=>setPlaces(d.locations||[])).catch(e=>{if(e.name!=='AbortError')setError('City search is unavailable.');});},300);return()=>{clearTimeout(timer);abort.abort();};},[query]);
+ useEffect(()=>{if(query.trim().length<2){setPlaces([]);return;}const abort=new AbortController(),timer=setTimeout(()=>{fetch(`/api/locations?q=${encodeURIComponent(query)}`,{signal:abort.signal}).then(r=>r.json()).then((value:unknown)=>{const data=value as {locations?:Place[]};setPlaces(data.locations||[]);}).catch(e=>{if(e.name!=='AbortError')setError('City search is unavailable.');});},300);return()=>{clearTimeout(timer);abort.abort();};},[query]);
  useEffect(()=>{const keyboard=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();if(e.key==='Tab'){const items=Array.from(document.querySelectorAll<HTMLElement>('.hp-modal button:not([disabled]),.hp-modal input:not([disabled])'));const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}};document.addEventListener('keydown',keyboard);return()=>{document.removeEventListener('keydown',keyboard);if(opener instanceof HTMLElement)opener.focus();};},[onClose,opener]);
  return <div className="hp-modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><section role="dialog" aria-modal="true" aria-labelledby="hp-city-title" className="hp-modal"><button onClick={onClose} aria-label="Close city search" className="hp-icon"><X size={20}/></button><p className="hp-eyebrow">A PLACE TO BEGIN</p><h2 id="hp-city-title">Where’s your <em>world?</em></h2><label className="hp-field">Your city<input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="London, Kyoto, somewhere else…"/></label><ul className="hp-city-results">{places.map(p=><li key={`${p.latitude}:${p.longitude}`}><button onClick={()=>onChoose(p)}><span>{p.name}<small>{p.admin1?`${p.admin1}, `:''}{p.country}</small></span><ArrowRight size={18}/></button></li>)}</ul><p role="status">{error||'Type your city and choose a matching place.'}</p></section></div>;
 }
@@ -27,11 +58,11 @@ export function Studio(){
  const [profileVersion,setProfileVersion]=useState(0),[nextCursor,setNextCursor]=useState<string|null>(null);
  const [account,setAccount]=useState<Account|null>(null),[preferences,setPreferences]=useState<AmbientPreferences|null>(null),[pictures,setPictures]=useState<Picture[]>([]),[tab,setTab]=useState('overview'),[cityOpen,setCityOpen]=useState(false),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[code,setCode]=useState(''),[deletePassword,setDeletePassword]=useState(''),[devices,setDevices]=useState<{id:string;created_at:number;expires:number}[]>([]);
  useEffect(()=>{if(new URLSearchParams(location.search).get('billing')!=='success')return;let active=true;productAPI('billing/recover',{}).catch(()=>{});setMessage('Checking payment confirmation. Membership updates after server confirmation.');const timer=setInterval(()=>{productAPI<Account>('auth/session').then(value=>{if(active&&value.user&&value.access.plan!=='trial'){setAccount(value);setMessage('Your membership is ready. Make yourself at home.');clearInterval(timer);history.replaceState(null,'','/app');}}).catch(()=>{});},5000);const timeout=setTimeout(()=>{clearInterval(timer);if(active)setMessage('Payment confirmation is taking longer. Check Account & billing before starting another checkout.');},60000);return()=>{active=false;clearInterval(timer);clearTimeout(timeout);};},[]);
- useEffect(()=>{let active=true;productAPI('auth/session').then(async d=>{if(!d.user){location.replace('/auth');return;}const [profile,library,paired]=await Promise.all([productAPI('preferences'),productAPI('library'),productAPI('devices')]);if(!active)return;setAccount(d as Account);setPreferences(profile.preferences);setProfileVersion(profile.version??0);setPictures(library.pictures);setNextCursor(library.nextCursor??null);setDevices(paired.devices);const t=new URLSearchParams(location.search).get('tab');setTab(t&&['collection','preferences','desktop','account'].includes(t)?t:'overview');}).catch(e=>setMessage(e.message));return()=>{active=false;};},[]);
+ useEffect(()=>{let active=true;productAPI('auth/session').then(async d=>{if(!d.user){location.replace(authDestination('login','/app'));return;}const [profile,library,paired]=await Promise.all([productAPI('preferences'),productAPI('library'),productAPI('devices')]);if(!active)return;setAccount(d as Account);setPreferences(profile.preferences);setProfileVersion(profile.version??0);setPictures(library.pictures);setNextCursor(library.nextCursor??null);setDevices(paired.devices);const t=new URLSearchParams(location.search).get('tab');setTab(t&&['collection','preferences','desktop','account'].includes(t)?t:'overview');}).catch(e=>setMessage(e.message));return()=>{active=false;};},[]);
  async function action(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn();}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
  async function choose(p:Place){await action(async()=>{const next:AmbientPreferences={version:1,location:p,seed:crypto.getRandomValues(new Uint32Array(1))[0]||1,unit:preferences?.unit||'c',reducedMotion:preferences?.reducedMotion||false,...(preferences?.style?{style:preferences.style}:{}),...(preferences?.festiveTouches!==undefined?{festiveTouches:preferences.festiveTouches}:{})};const saved=await productAPI('preferences',{preferences:next,expectedVersion:profileVersion});setProfileVersion(saved.version);setPreferences(saved.preferences);setCityOpen(false);setMessage('Your city is set. Your next moment follows its time and weather.');});}
  async function save(next:AmbientPreferences){await action(async()=>{const saved=await productAPI('preferences',{preferences:next,expectedVersion:profileVersion});setProfileVersion(saved.version);setPreferences(saved.preferences);setMessage('Preferences saved.');});}
- function launch(){if(!preferences)setCityOpen(true);else location.href='/display';}
+ function launch(){location.href=preferences?'/display':onboardingDestination();}
  async function loadMore(){await action(async()=>{const page=await productAPI('library?cursor='+encodeURIComponent(nextCursor!));setPictures(current=>[...current,...page.pictures.filter((p:Picture)=>!current.some(c=>c.id===p.id))]);setNextCursor(page.nextCursor??null);});}
  async function favourite(p:Picture){await action(async()=>{await productAPI('favourite',{id:p.id,favourite:!p.favourite});setPictures(current=>current.map(item=>item.id===p.id?{...item,favourite:!item.favourite}:item));});}
  function changeTab(t:string){setTab(t);setMessage('');history.replaceState(null,'',`/app${t==='overview'?'':`?tab=${t}`}`);}
@@ -51,14 +82,14 @@ export function Studio(){
 }
 function PictureCard({picture:p,busy,onFavourite}:{picture:Picture;busy:boolean;onFavourite:()=>void}){return <article className="hp-picture"><a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.title} loading="lazy"/></a><button className="hp-favourite" disabled={busy} aria-label={`${p.favourite?'Remove':'Save'} favourite: ${p.title}`} aria-pressed={p.favourite} onClick={onFavourite}><Heart size={17} fill={p.favourite?'currentColor':'none'}/></button><h3>{p.title}</h3><p>{new Date(p.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}<span> · {p.phase}</span></p></article>;}
 export function CustomerDisplay(){
- const [profile,setProfile]=useState<{owner:string;preferences:AmbientPreferences;memory:StoryMemory|null;version:number}|null>(null),[error,setError]=useState('');
+ const [profile,setProfile]=useState<{owner:string;preferences:AmbientPreferences;memory:StoryMemory|null;version:number;screen?:ScreenIdentity}|null>(null),[error,setError]=useState('');
  useEffect(()=>{
   let active=true,owner='',version=-1,inFlight=false,revision=0,rerun=false;
   async function check(clear=false){
    if(!active)return;if(clear){revision++;setProfile(null);}if(document.hidden)return;if(inFlight){rerun=rerun||clear;return;}const epoch=revision;inFlight=true;
    try{
     const a=await productAPI('auth/session');if(!active||epoch!==revision)return;
-    if(!a.user){setProfile(null);location.replace('/auth');return;}
+    if(!a.user){setProfile(null);location.replace(authDestination('login','/display'));return;}
     const changed=owner!==a.user.id;
     if(changed){setProfile(null);version=-1;}
     if(!changed&&!clear&&a.profileVersion===version)return;
@@ -66,9 +97,9 @@ export function CustomerDisplay(){
     // Session and profile are separate requests. A cookie can change between
     // them even when browser storage is blocked, so bind both to one owner.
     if(p.surface?.owner_id!==a.user.id){setProfile(null);throw new Error('Your account changed while loading. Return to your studio or refocus to reconnect.');}
-    if(!p.preferences){setProfile(null);location.replace('/app');return;}
+    if(!p.preferences){setProfile(null);location.replace(onboardingDestination());return;}
     if(changed){try{const pending=localStorage.getItem('heartbeat.account.owner')===a.user.id?localStorage.getItem('heartbeat.ai-request.v1'):null;storageKeys.forEach(k=>localStorage.removeItem(k));localStorage.setItem('heartbeat.account.owner',a.user.id);if(pending)localStorage.setItem('heartbeat.ai-request.v1',pending);localStorage.setItem('heartbeat.ambient.v1',JSON.stringify(p.preferences));}catch{/* Canonical profile and job discovery work without storage. */}}
-    owner=a.user.id;version=p.version??0;setProfile({owner,preferences:p.preferences,memory:p.memory||null,version});setError('');
+    owner=a.user.id;version=p.version??0;const screen=p.worldId&&p.surfaceId&&Number.isSafeInteger(p.surface.version)?{worldId:p.worldId,surfaceId:p.surfaceId,surfaceVersion:p.surface.version}:undefined;setProfile({owner,preferences:p.preferences,memory:p.memory||null,version,screen});setError('');
    }catch(e){if(active&&epoch===revision){if(clear)setProfile(null);setError((e as Error).message);}}
    finally{inFlight=false;if(rerun&&active){rerun=false;void check();}}
   }
@@ -78,5 +109,5 @@ export function CustomerDisplay(){
   window.addEventListener('storage',storage);window.addEventListener('focus',foreground);document.addEventListener('visibilitychange',foreground);
   return()=>{active=false;clearInterval(timer);window.removeEventListener('storage',storage);window.removeEventListener('focus',foreground);document.removeEventListener('visibilitychange',foreground);};
  },[]);
- return profile?<LiveHeartbeat key={`${profile.owner}:${profile.version}`} customer initialPreferences={profile.preferences} initialMemory={profile.memory} initialPreferencesVersion={profile.version}/>:<div className="hp-display-loading"><Brand/><p role="status">{error||'Finding your atmosphere?'}</p>{error&&<a href="/app">Return to your studio</a>}</div>;
+ return profile?<LiveHeartbeat key={`${profile.owner}:${profile.version}`} customer initialPreferences={profile.preferences} initialMemory={profile.memory} initialPreferencesVersion={profile.version} initialSurface={profile.screen}/>:<div className="hp-display-loading"><Brand/><p role="status">{error||'Finding your atmosphere?'}</p>{error&&<a href="/app">Return to your studio</a>}</div>;
 }

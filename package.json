@@ -9,7 +9,9 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "product:prepare": "node scripts/prepare-product.mjs",
     "desktop:build": "node scripts/build-desktop.mjs",
-    "test:product": "node --experimental-strip-types tests/product.mjs && node --experimental-strip-types tests/billing.mjs && node tests/product-ui.mjs && node --experimental-strip-types tests/product-playback.mjs && node tests/account-identity.mjs",
+    "test:product": "node --experimental-strip-types tests/product.mjs && node --experimental-strip-types tests/billing.mjs && node tests/product-ui.mjs && node --experimental-strip-types tests/product-playback.mjs && node tests/account-identity.mjs && node tests/onboarding.mjs && node --experimental-strip-types tests/journey-auth.mjs && node --experimental-strip-types tests/recording-demo.mjs && node --experimental-strip-types tests/screen-profile.mjs && node tests/screen-profile-hook.mjs",
+    "setup:check": "node scripts/setup-status.mjs",
+    "demo:prepare": "node scripts/prepare-demo-art.mjs",
     "test:product:live": "node tests/live-product.mjs",
     "ai:smoke": "node scripts/smoke-ai.mjs",
     "ai:prepare": "node scripts/prepare-ai.mjs",
@@ -28,7 +30,7 @@
     "start": "node scripts/start-local.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test:architecture": "node --experimental-strip-types scripts/schema-contract.mjs && node --experimental-strip-types tests/architecture.mjs && node --experimental-strip-types tests/architecture-failures.mjs && node --experimental-strip-types tests/state-lifecycle.mjs && node --experimental-strip-types tests/operations-retention.mjs && node --experimental-strip-types tests/security-context.mjs && node --experimental-strip-types tests/usage-adjustments.mjs",
+    "test:architecture": "node --experimental-strip-types scripts/schema-contract.mjs && node --experimental-strip-types tests/architecture.mjs && node --experimental-strip-types tests/architecture-failures.mjs && node --experimental-strip-types tests/state-lifecycle.mjs && node --experimental-strip-types tests/operations-retention.mjs && node --experimental-strip-types tests/security-context.mjs && node --experimental-strip-types tests/usage-adjustments.mjs && node tests/release-activation.mjs && node tests/worker-weather.mjs && node --experimental-strip-types tests/weather-generation.mjs && node --experimental-strip-types tests/password-runtime.mjs && node --experimental-strip-types tests/weather-boundary.mjs",
     "check:schema": "node --experimental-strip-types scripts/schema-contract.mjs"
   },
   "dependencies": {

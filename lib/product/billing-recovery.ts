@@ -304,7 +304,7 @@ export async function createCheckoutIntent(user: User, plan: unknown, env: Produ
         if (!pending)
             written(await database.prepare(`INSERT INTO hb_checkout(id,user_id,price_id,status,created_at,expires_at) SELECT ?,?,?,'creating',?,? WHERE ${checkoutFence}`).bind(id, user.id, price, created, expires, user.id, claim, at()).run());
         // Retry an ambiguous creation with its exact original request and key.
-        const origin = new URL(env.HEARTBEAT_APP_ORIGIN!).origin, remote = await stripe('checkout/sessions', { mode: 'subscription', customer: account!.customer_id, 'line_items[0][price]': price, 'line_items[0][quantity]': '1', client_reference_id: user.id, 'subscription_data[metadata][heartbeat_user]': user.id, expires_at: String(Math.floor(expires / 1000)), success_url: `${origin}/app?billing=success`, cancel_url: `${origin}/pricing?billing=cancelled` }, `heartbeat-checkout-${id}`);
+        const origin = new URL(env.HEARTBEAT_APP_ORIGIN!).origin, remote = await stripe('checkout/sessions', { mode: 'subscription', customer: account!.customer_id, 'line_items[0][price]': price, 'line_items[0][quantity]': '1', client_reference_id: user.id, 'subscription_data[metadata][heartbeat_user]': user.id, expires_at: String(Math.floor(expires / 1000)), success_url: `${origin}/onboarding?billing=success&plan=${plan}`, cancel_url: `${origin}/onboarding?billing=cancelled&plan=${plan}` }, `heartbeat-checkout-${id}`);
         validateCheckout(remote, account!.customer_id, user.id);
         if (Number(remote.expires_at) * 1000 !== expires)
             throw new ProductError('Checkout expiration could not be verified.', 503);
