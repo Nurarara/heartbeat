@@ -187,6 +187,23 @@ export const hbEvents=sqliteTable("hb_events",{
   "id":text("id").notNull().primaryKey(),
   "processed_at":integer("processed_at").notNull()
 },t=>[]);
+export const hbGoogleIdentities=sqliteTable("hb_google_identities",{
+  "subject":text("subject").notNull().primaryKey(),
+  "user_id":text("user_id").notNull(),
+  "created_at":integer("created_at").notNull()
+},t=>[uniqueIndex("hb_google_identity_user").on(t["user_id"]),
+foreignKey({name:"hb_google_identities_user_id_fk",columns:[t["user_id"]],foreignColumns:[hbUsers["id"]]}).onDelete("cascade").onUpdate("no action")]);
+export const hbGoogleStates=sqliteTable("hb_google_states",{
+  "state_hash":text("state_hash").notNull().primaryKey(),
+  "verifier":text("verifier").notNull(),
+  "nonce":text("nonce").notNull(),
+  "redirect_uri":text("redirect_uri").notNull(),
+  "continuation":text("continuation").notNull(),
+  "plan":text("plan").notNull(),
+  "owner_id":text("owner_id"),
+  "credential_epoch":integer("credential_epoch"),
+  "expires":integer("expires").notNull()
+},t=>[index("hb_google_states_expiry").on(t["expires"])]);
 export const hbJobs=sqliteTable("hb_jobs",{
   "id":text("id").notNull().primaryKey(),
   "owner":text("owner").notNull(),
@@ -277,7 +294,9 @@ export const hbSessions=sqliteTable("hb_sessions",{
   "hash":text("hash").notNull().primaryKey(),
   "user_id":text("user_id").notNull(),
   "expires":integer("expires").notNull(),
-  "credential_epoch":integer("credential_epoch").notNull().default(0)
+  "credential_epoch":integer("credential_epoch").notNull().default(0),
+  "auth_method":text("auth_method").notNull().default("password"),
+  "authenticated_at":integer("authenticated_at").notNull().default(0)
 },t=>[index("hb_sessions_expiry").on(t["expires"]),
 index("hb_sessions_user_expiry").on(t["user_id"],t["expires"]),
 index("hb_session_user").on(t["user_id"])]);

@@ -18,6 +18,27 @@ Run `npm run setup:check`. It checks local field presence without displaying val
 
 The ignored `.dev.vars` file is beside `package.json`. Set secrets there locally, or in the target deployment's secret store. `.env.example` lists field names only. Source publication does not upload this file.
 
+## Recover a local Heartbeat password
+
+1. Open a terminal in the project folder and run `npm run account:recover`.
+2. Enter the email address you registered with Heartbeat. The command uses only the local development database and prints a private one-use link; it does not send email or change your password itself.
+3. Open that link on this computer within 30 minutes and choose a new Heartbeat password. The reset signs out existing sessions and paired devices. Keep the link private.
+4. Sign in with your email and the new **Heartbeat** password. Your Gmail password is separate. When signed in, Account & billing → Change your Heartbeat password offers a current-password change.
+
+This is an operator-only local recovery workflow, not a public customer recovery mechanism. A deployed product requires verified email delivery below. Sign-in itself does not automatically send an email; verification and password reset use email when configured.
+
+## Connect Google sign-in for local testing
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/), create or select a project, then configure Google Auth Platform → Branding and Audience. Supply the app name and support email. For a personal prototype choose an external testing audience and add your Google account as a test user if prompted.
+2. Under Clients, create a **Web application** OAuth client. Add this exact authorized redirect URI: `http://localhost:5173/api/product/auth/google/callback`. The address must match the one opened in the browser; register a separate `http://127.0.0.1:5173/api/product/auth/google/callback` URI if you use that host instead.
+3. Copy the client ID and client secret into the ignored `.dev.vars` beside `package.json`, as `HEARTBEAT_GOOGLE_CLIENT_ID` and `HEARTBEAT_GOOGLE_CLIENT_SECRET`. Do not put the secret in chat or Git. Restart `npm run dev` after saving.
+4. Open `http://localhost:5173/auth`. **Continue with Google** should now be available. Test consent, cancellation, returning sign-in and entering the correct world. Google authentication needs real credentials and has not yet been tested against a real Google account.
+5. An existing unverified Heartbeat account is not silently linked. Sign in with its Heartbeat password first, open Account & billing and choose **Connect Google**. If you forgot that password, use the local recovery steps above first.
+
+The server validates a signed Google ID token, issuer, audience, expiry and nonce; protects the redirect with one-use state and PKCE; and stores the stable Google subject, not Google access tokens. New Google-only accounts can set a Heartbeat password in Account & billing immediately after a fresh Google sign-in. Third-party email addresses that Google is not authoritative for still need Heartbeat email verification. Deleting an account requires a Heartbeat password.
+
+For hosted staging/production, use separate OAuth clients and their exact HTTPS callback origins. Set the Google client ID and secret as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the corresponding protected GitHub environment. Public consent-screen verification and domain requirements must be checked before release. [Google’s web-server setup](https://developers.google.com/identity/protocols/oauth2/web-server) describes the client and redirect setup.
+
 ## Stripe sandbox first
 
 1. Create a Stripe account or use a temporary claimable sandbox if available. Use a sandbox, never live payments for these tests. An existing Stripe account is not needed for the recording demo.
@@ -37,7 +58,7 @@ References: [Stripe sandboxes](https://docs.stripe.com/sandboxes), [products and
 1. Choose and register a domain you want to own. No domain was purchased by this work. A temporary HTTPS staging hostname can be used for the web app; broad customer email still needs a verified sender domain.
 2. Create a Resend account, add your sending domain and add the DNS records Resend provides. Wait until its dashboard reports the domain verified. Do not replace unrelated existing DNS/email records blindly.
 3. Create a sending-only key scoped to that domain. Put it in `HEARTBEAT_EMAIL_API_KEY`; set `HEARTBEAT_EMAIL_FROM` to a sender on the verified domain, such as `Heartbeat <hello@your-domain>`.
-4. Set the exact application origin for that environment. Test verification and reset emails in real inboxes, expired/reused links and continuation into the chosen plan/onboarding. Verify that reset revokes existing sessions and paired devices.
+4. Set the exact application origin for that environment. In local development automatic registration email is skipped; after configuring the sender, sign in and use the **Send verification email** button in the studio to test delivery deliberately. Test verification and reset emails in real inboxes, expired/reused links and continuation into the chosen plan/onboarding. Verify that reset revokes existing sessions and paired devices.
 
 References: [Resend domains](https://resend.com/docs/dashboard/domains/introduction), [Resend API key permissions](https://resend.com/changelog/new-api-key-permissions).
 

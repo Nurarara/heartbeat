@@ -4,10 +4,10 @@ import {sha256} from '@noble/hashes/sha2.js';
 import {pbkdf2 as nativePbkdf2} from 'node:crypto';
 import {safeContinuation} from '../customer-journey.ts';
 export type User = { id:string; email:string; verified:number; created_at:number; password_hash:string; lifecycle?:string; credential_epoch?:number };
-export type Auth = { user:User; expires:number };
+export type Auth = { user:User; expires:number; method:'password'|'google'; authenticatedAt:number };
 const COOKIE = 'heartbeat_account';
-export const publicUser = (user:User) => ({ id:user.id,email:user.email,verified:!!user.verified });
-export function email(value: unknown) { if (typeof value !== 'string' || value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new ProductError('Enter a valid email address.'); return value.trim().toLowerCase(); }
+export const publicUser = (user:User) => ({ id:user.id,email:user.email,verified:!!user.verified,hasPassword:user.password_hash!=='google-only' });
+export function email(value: unknown) { if(typeof value!=='string')throw new ProductError('Enter a valid email address.');const normalized=value.trim().toLowerCase();if(normalized.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized))throw new ProductError('Enter a valid email address.');return normalized; }
 export function password(value: unknown): asserts value is string { if (typeof value !== 'string' || value.length < 12 || value.length > 128) throw new ProductError('Use a password between 12 and 128 characters.'); }
 export const PASSWORD_ITERATIONS = 600000;
 const SUPPORTED_ITERATIONS = new Set([100000, PASSWORD_ITERATIONS]);
@@ -62,13 +62,13 @@ export async function passwordMatches(value:string, stored:string) {
 export async function authenticate(request:Request, env:ProductEnv, now=Date.now()):Promise<Auth|null> {
   const cookieName=new URL(request.url).protocol==='https:'?'__Host-heartbeat_account':COOKIE;
   const token=request.headers.get('cookie')?.match(new RegExp(`(?:^|;\\s*)${cookieName}=([a-f0-9]{64})(?:;|$)`))?.[1]; if(!token)return null;
-  const row=await db(env).prepare("SELECT u.*,s.expires FROM hb_sessions s JOIN hb_users u ON u.id=s.user_id WHERE s.hash=? AND s.expires>? AND u.lifecycle='active' AND s.credential_epoch=u.credential_epoch").bind(await hash(token),now).first<User & {expires:number}>();
-  return row?{user:row,expires:row.expires}:null;
+  const row=await db(env).prepare("SELECT u.*,s.expires,s.auth_method,s.authenticated_at FROM hb_sessions s JOIN hb_users u ON u.id=s.user_id WHERE s.hash=? AND s.expires>? AND u.lifecycle='active' AND s.credential_epoch=u.credential_epoch").bind(await hash(token),now).first<User & {expires:number;auth_method:'password'|'google';authenticated_at:number}>();
+  return row?{user:row,expires:row.expires,method:row.auth_method,authenticatedAt:row.authenticated_at}:null;
 }
 export async function requireAuth(request:Request,env:ProductEnv,now=Date.now()) { const result=await authenticate(request,env,now);if(!result)throw new ProductError('Sign in to continue.',401);return result; }
-export async function session(request:Request,env:ProductEnv,user:User,now:number) {
+export async function session(request:Request,env:ProductEnv,user:User,now:number,method:'password'|'google'='password') {
   const token=randomToken(),expires=now+30*86400000;
-  const result=await db(env).prepare("INSERT INTO hb_sessions(hash,user_id,expires,credential_epoch) SELECT ?,id,?,credential_epoch FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(await hash(token),expires,user.id,user.credential_epoch||0).run();
+  const result=await db(env).prepare("INSERT INTO hb_sessions(hash,user_id,expires,credential_epoch,auth_method,authenticated_at) SELECT ?,id,?,credential_epoch,?,? FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(await hash(token),expires,method,now,user.id,user.credential_epoch||0).run();
   if(!result.meta.changes)throw new ProductError('Your account changed. Sign in again.',401);
   const secure=new URL(request.url).protocol==='https:';
   return json({user:publicUser(user),local:localDevelopment(request,env)},200,{'Set-Cookie':`${secure?'__Host-heartbeat_account':COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure?'; Secure':''}`});

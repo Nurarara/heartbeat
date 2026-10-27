@@ -12,7 +12,7 @@ export async function retainAssets(env:ProductEnv,now=Date.now(),limit=20){
  // tombstone manifests let bounded repair remove any late reappearing object.
  const revoked=await database.prepare("SELECT id,art_key FROM hb_assets WHERE owner LIKE 'deleted-%' AND updated_at<? ORDER BY updated_at LIMIT ?").bind(now-60000,Math.min(limit,100)).all<{id:string;art_key:string}>();
  for(const a of revoked.results){if(!env.BUCKET)break;try{await env.BUCKET.delete(a.art_key);await database.prepare("UPDATE hb_assets SET state='deleted',updated_at=? WHERE id=?").bind(now,a.id).run();}catch{await database.prepare('UPDATE hb_assets SET updated_at=? WHERE id=?').bind(now,a.id).run();/* Rotate failed tombstones without starving other cleanup. */}}
- for(const [table,column] of [['hb_sessions','expires'],['hb_tokens','expires'],['hb_rate','reset_at']] as const)await database.prepare(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${column}<=? LIMIT 200)`).bind(now).run();
+ for(const [table,column] of [['hb_sessions','expires'],['hb_tokens','expires'],['hb_google_states','expires'],['hb_rate','reset_at']] as const)await database.prepare(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${column}<=? LIMIT 200)`).bind(now).run();
  await database.prepare('DELETE FROM hb_devices WHERE rowid IN (SELECT rowid FROM hb_devices WHERE expires<=? LIMIT 100)').bind(now).run();
  await database.prepare("UPDATE hb_billing_inbox SET payload='{}' WHERE id IN (SELECT id FROM hb_billing_inbox WHERE status='processed' AND processed_at<? AND payload!='{}' LIMIT 100)").bind(now-30*86400000).run();
  return {deleted};

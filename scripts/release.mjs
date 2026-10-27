@@ -11,7 +11,7 @@ validateReleaseBuild(JSON.parse(readFileSync('dist/server/wrangler.json','utf8')
 validateReleaseSecrets(selected,target,process.env);
 function wrangler(args,input){const r=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...args,'--config','dist/server/wrangler.json'],{input,encoding:'utf8',windowsHide:true});if(r.status!==0)throw new Error('Release command failed. Inspect the target service through authenticated operator tools; credentials are redacted.');}
 const values={CLOUDFLARE_ACCOUNT_ID:process.env.CLOUDFLARE_ACCOUNT_ID,CLOUDFLARE_API_TOKEN:process.env.HEARTBEAT_RUNTIME_AI_TOKEN};
-for(const key of ['HEARTBEAT_WEATHER_API_KEY','HEARTBEAT_EMAIL_API_KEY','HEARTBEAT_EMAIL_FROM','HEARTBEAT_OPERATOR_KEY','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_STUDIO_PRICE_ID','STRIPE_ATELIER_PRICE_ID'])if(process.env[key])values[key]=process.env[key];
+for(const key of ['HEARTBEAT_WEATHER_API_KEY','HEARTBEAT_EMAIL_API_KEY','HEARTBEAT_EMAIL_FROM','HEARTBEAT_GOOGLE_CLIENT_ID','HEARTBEAT_GOOGLE_CLIENT_SECRET','HEARTBEAT_OPERATOR_KEY','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_STUDIO_PRICE_ID','STRIPE_ATELIER_PRICE_ID'])if(process.env[key])values[key]=process.env[key];
 // Additive migrations precede code activation. Backwards compatibility and a
 // tested rollback version remain human acceptance gates. Wrangler 4.92 accepts
 // --secrets-file; on the Ubuntu runner /dev/stdin supplies the JSON without a

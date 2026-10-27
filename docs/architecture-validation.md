@@ -2,6 +2,10 @@
 
 ## 27 October product and demo follow-up
 
+Authentication follow-up: Google OpenID Connect, password change and local password recovery have real-SQLite tests. Signed JWT claims, PKCE/state/nonce, single-use state, safe account linking and revocation are tested; Google HTTP responses are fixtures. A true Workerd/D1 test verifies the signed-token and multi-cookie redirect path. The Google client and actual consent have not been configured/tested. A disposable local account also completed real Wrangler/D1 recovery, one-use reset, password change, re-login and deletion. Migration 0014 was applied after a local backup was restore-checked; existing accounts and artwork were preserved. A read-only Cloudflare check returned an active token and a successful Workers AI model-catalog response; no inference attempt was consumed by that check.
+
+The authentication update also upgrades Next.js, React/React DOM/RSC, Zod and selected dependencies to address published advisories. On 27 October `corepack pnpm audit --prod` reported no known vulnerabilities. The full development-dependency audit still reported high and moderate findings in tooling such as undici, ws and Vite; their applicability to the build and local preview requires review before release. An audit result is not an independent security review.
+
 The guided account journey and recording demo now run in the actual local Worker. This extends the historical record below; it does not certify a hosted commercial release.
 
 - Ten separate original 1672 × 941 PNG artworks were generated with the built-in image tool and visually inspected. Delivery WebPs preserve dimensions and reduce the combined bytes from 26,545,497 to 2,704,602. Full prompts and provenance are versioned in `demo-art-a.json`, `demo-art-b.json` and `demo-art-delivery.json`.

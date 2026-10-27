@@ -11,13 +11,13 @@ Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configu
 let reducedMotion=true,motionListener;window.matchMedia=()=>({get matches(){return reducedMotion;},addEventListener(_event,fn){motionListener=fn;},removeEventListener(){motionListener=null;}});
 globalThis.Image=function(){const image=document.createElement('img');image.decode=()=>Promise.resolve();return image;};
 const london={name:'London',country:'United Kingdom',latitude:51.5,longitude:-.12,timezone:'Europe/London'};
-let preferences=null,liked=false,pairCount=0,saveCount=0,registers=0,plan='trial';
+let preferences=null,liked=false,pairCount=0,saveCount=0,registers=0,plan='trial',verified=true,emailAvailable=false,googleAvailable=false,googleLinked=false,hasPassword=true;
 const requests=[];
 globalThis.fetch=async(url,options={})=>{const path=String(url),body=options.body?JSON.parse(options.body):null;requests.push({path,body});
  if(path.startsWith('/api/locations'))return Response.json({locations:[london]});
  if(path.startsWith('/api/context'))return Response.json({context:{temperature:9,observedAt:Date.now(),fetchedAt:Date.now(),weatherCode:3,isDay:null},serverTime:Date.now()});
  if(path==='/api/ai/status')return Response.json({configured:false,authorized:false,available:false,reason:'Fixture: no inference'});
- if(path==='/api/product/auth/session')return Response.json({user:{id:'fixture-account',email:'you@example.test',verified:true},local:true,access:{plan,allowance:plan==='trial'?3:120,used:1},billingReady:false});
+ if(path==='/api/product/auth/session')return Response.json({user:{id:'fixture-account',email:'you@example.test',verified,hasPassword},local:true,emailAvailable,googleAvailable,googleLinked,access:{plan,allowance:plan==='trial'?3:120,used:1},billingReady:false});
  if(path==='/api/product/preferences'){if(body){preferences=body.preferences;saveCount++;return Response.json({saved:true,preferences,version:saveCount});}return Response.json({preferences,memory:null,version:saveCount,surface:{owner_id:'fixture-account'}});}
  if(path==='/api/product/library')return Response.json({pictures:[{id:'picture-one',title:'Rain-softened water',url:'/api/ai/art/picture-one',phase:'day',createdAt:Date.now(),favourite:liked,reason:'A subdued afternoon.'}]});
  if(path==='/api/product/favourite'){liked=body.favourite;return Response.json({saved:true});}
@@ -25,6 +25,7 @@ globalThis.fetch=async(url,options={})=>{const path=String(url),body=options.bod
  if(path==='/api/product/device/approve'){pairCount++;return Response.json({paired:true});}
  if(path==='/api/product/plans')return Response.json({billingReady:false});
  if(path==='/api/product/auth/register'){registers++;return Response.json({error:'Email delivery is not configured yet.'},{status:503});}
+ if(path==='/api/product/auth/resend')return Response.json({message:'Verification email sent.'});
  throw new Error(`Unexpected request ${path}`);
 };
 const output=await build({stdin:{contents:"export {Landing,Pricing} from './components/product-shell';export {Studio,AuthPage,CustomerDisplay} from './components/customer-app';export {AIControls} from './components/ai-controls';",resolveDir:process.cwd(),loader:'tsx'},bundle:true,platform:'node',format:'cjs',packages:'external',write:false,tsconfig:'tsconfig.json',logLevel:'silent'});
@@ -45,6 +46,8 @@ try {
  await click(button('Your collection'));await click(button('Save favourite: Rain-softened water'));assert.equal(liked,true);assert.equal(button('Remove favourite: Rain-softened water').getAttribute('aria-pressed'),'true');
  await click(button('Desktop companion'));await input(document.querySelector('input[inputmode=numeric]'),'123456');await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));await settle();assert.equal(pairCount,1);assert.match(document.body.textContent,/Desktop paired/);
  await click(button('Account & billing'));assert.ok(button('Manage billing').disabled);assert.match(document.body.textContent,/No subscription is being charged/);await unmount();plan='studio';history.replaceState(null,'','/app');await mount(components.Studio);assert.match(document.body.textContent,/Recently in your world/,'Paid overview retains recent artwork');await unmount();plan='trial';
+ verified=false;emailAvailable=true;history.replaceState(null,'','/app');await mount(components.Studio);assert.ok(button('Send verification email'),'A configured local sender exposes a deliberate email test');assert.ok(!requests.some(r=>r.path==='/api/product/auth/resend'),'No verification email is sent automatically');await click(button('Send verification email'));assert.match(document.body.textContent,/Verification email sent/);await unmount();verified=true;emailAvailable=false;
+ hasPassword=false;googleAvailable=true;googleLinked=true;history.replaceState(null,'','/app?tab=account');await mount(components.Studio);assert.match(document.body.textContent,/Google is connected/);assert.match(document.body.textContent,/Set a Heartbeat password/);assert.equal(document.querySelector('input[autocomplete=current-password]'),null,'Google-only users do not need a nonexistent current password');await unmount();hasPassword=true;googleAvailable=false;googleLinked=false;
  history.replaceState(null,'','/auth?mode=register');await mount(components.AuthPage);await input(document.querySelector('input[type=email]'),'person@example.test');await input(document.querySelector('input[type=password]'),'a long test password');await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));await settle();assert.equal(registers,1);assert.match(document.body.textContent,/Email delivery is not configured/);assert.equal(document.querySelector('input[type=password]').value,'a long test password');await unmount();
  const originalStorage=globalThis.localStorage;
  Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw new Error('Storage is blocked');}});

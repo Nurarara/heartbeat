@@ -33,7 +33,8 @@ export async function processAccountDeletions(env:ProductEnv,now=Date.now(),limi
   if(keys.results.length===32){await database.prepare('UPDATE hb_deletions SET next_attempt_at=? WHERE id=?').bind(now,row.id).run();continue;}
   const tombstone=`deleted-${await hash(row.owner)}`;
   await database.batch([
-   ...['hb_likes','hb_profiles','hb_checkout','hb_billing'].map(table=>database.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(row.owner)),
+   ...['hb_likes','hb_profiles','hb_checkout','hb_billing','hb_google_identities'].map(table=>database.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(row.owner)),
+   database.prepare('DELETE FROM hb_google_states WHERE owner_id=?').bind(row.owner),
    database.prepare('DELETE FROM hb_display_events WHERE owner_id=?').bind(row.owner),database.prepare('DELETE FROM hb_surfaces WHERE owner_id=?').bind(row.owner),database.prepare('DELETE FROM hb_worlds WHERE owner_id=?').bind(row.owner),
    ...['hb_usage_periods','hb_usage_reservations','hb_usage_ledger'].map(table=>database.prepare(`UPDATE ${table} SET owner=? WHERE owner=?`).bind(tombstone,row.owner)),
    database.prepare("UPDATE hb_usage_adjustments SET owner=?,reason='Account deleted; adjustment retained for accounting.' WHERE owner=?").bind(tombstone,row.owner),

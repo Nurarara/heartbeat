@@ -8,6 +8,7 @@ import {beginAccountDeletion} from './lifecycle.ts';
 import {recoverBilling,cancelPendingCheckout,processBillingInbox} from './billing-recovery.ts';
 import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
+import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
  const clock=deps.now||Date.now,fetcher=deps.fetcher||fetch;
@@ -19,7 +20,9 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    if(request.method!=='GET')checkOrigin(request,env);
    if(path.startsWith('device/')&&!['device/approve','device/revoke'].includes(path)) {const device=await deviceRoute(request,env,path,now);if(device)return device;}
    if(path==='plans'&&request.method==='GET') {if(billingReady(env))await rate(env,`prices:${request.headers.get('cf-connecting-ip')||'local'}`,now,20,60000);return json({plans:Object.values(PLANS),billingReady:billingReady(env),prices:await priceCatalog(env,fetcher)});}
-   if(path==='auth/session'&&request.method==='GET') {const auth=await authenticate(request,env,now);const version=auth?await db(env).prepare('SELECT preferences_version FROM hb_worlds WHERE id=? AND owner_id=?').bind(`world-${auth.user.id}`,auth.user.id).first<{preferences_version:number}>():null;return json(auth?{profileVersion:version?.preferences_version??0,user:publicUser(auth.user),access:await accessFor(auth,env,now,localDevelopment(request,env)),local:localDevelopment(request,env),billingReady:billingReady(env)}:{user:null,local:localDevelopment(request,env)});}
+   if(path==='auth/google/start'&&request.method==='GET')return await startGoogle(request,env,now);
+   if(path==='auth/google/callback'&&request.method==='GET')return await finishGoogle(request,env,now,fetcher);
+   if(path==='auth/session'&&request.method==='GET') {const auth=await authenticate(request,env,now);const version=auth?await db(env).prepare('SELECT preferences_version FROM hb_worlds WHERE id=? AND owner_id=?').bind(`world-${auth.user.id}`,auth.user.id).first<{preferences_version:number}>():null;const linked=auth?!!await db(env).prepare('SELECT user_id FROM hb_google_identities WHERE user_id=?').bind(auth.user.id).first():false;return json(auth?{profileVersion:version?.preferences_version??0,user:publicUser(auth.user),access:await accessFor(auth,env,now,localDevelopment(request,env)),local:localDevelopment(request,env),billingReady:billingReady(env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env),googleLinked:linked}:{user:null,local:localDevelopment(request,env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env)});}
    if(['auth/register','auth/login','auth/forgot'].includes(path)&&request.method==='POST') {
     const input=await readJSON(request,4096),address=email(input.email);await authRate(request,env,now,address);
     if(path==='auth/register') {
@@ -34,7 +37,13 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
      return await session(request,env,user,now);
     }
     const user=await db(env).prepare('SELECT * FROM hb_users WHERE email=?').bind(address).first<User>();
-    if(path==='auth/forgot') {if(user)try{await sendToken(env,user,'reset',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);}catch{/* Do not disclose whether the address exists. */}return json({message:'If an account exists and email delivery is available, a reset link is on its way.'});}
+    if(path==='auth/forgot') {
+     // This check is independent of account existence: do not claim that a
+     // message was sent when the operator has not configured email at all.
+     if(!env.HEARTBEAT_EMAIL_API_KEY||!env.HEARTBEAT_EMAIL_FROM)throw new ProductError('Password reset email is not configured yet. Contact Heartbeat support or use local account recovery.',503);
+     if(user)try{await sendToken(env,user,'reset',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);}catch{/* Do not disclose whether the address exists. */}
+     return json({message:'If an account exists and email delivery is available, a reset link is on its way.'});
+    }
     if(typeof input.password!=='string'||input.password.length>128)throw new ProductError('Email or password did not match.',401);
     const matches=await passwordMatches(input.password,user?.password_hash||'missing-account');if(!user||!matches||(user.lifecycle??'active')!=='active')throw new ProductError('Email or password did not match.',401);
     if(passwordNeedsRehash(user.password_hash))await db(env).prepare('UPDATE hb_users SET password_hash=? WHERE id=? AND password_hash=? AND credential_epoch=?').bind(await passwordHash(input.password),user.id,user.password_hash,user.credential_epoch||0).run();
@@ -59,6 +68,22 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    }
    if(path==='auth/logout'&&request.method==='POST')return await revoke(request,env);
    const auth=await requireAuth(request,env,now),user=auth.user;
+   if(path==='account/password'&&request.method==='POST') {
+    await rate(env,'security-hash:global',now,120,60000);await rate(env,`password-change:${user.id}`,now,6);
+    const input=await readJSON(request,2048);
+    const freshGoogle=user.password_hash==='google-only'&&auth.method==='google'&&auth.authenticatedAt<=now&&auth.authenticatedAt>=now-300000;
+    if(!freshGoogle&&(typeof input.currentPassword!=='string'||!await passwordMatches(input.currentPassword,user.password_hash)))throw new ProductError(user.password_hash==='google-only'?'Sign out and continue with Google again to set your password.':'Your current Heartbeat password did not match.',403);
+    password(input.newPassword);const next=await passwordHash(input.newPassword),epoch=user.credential_epoch||0;
+    const database=db(env),fence="EXISTS(SELECT 1 FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=? AND password_hash=?)";
+    const changed=await database.batch([
+     database.prepare("UPDATE hb_users SET password_hash=?,credential_epoch=credential_epoch+1 WHERE id=? AND lifecycle='active' AND credential_epoch=? AND password_hash=?").bind(next,user.id,epoch,user.password_hash),
+     database.prepare(`DELETE FROM hb_sessions WHERE user_id=? AND ${fence}`).bind(user.id,user.id,epoch+1,next),
+     database.prepare(`DELETE FROM hb_devices WHERE owner=? AND ${fence}`).bind(user.id,user.id,epoch+1,next),
+     database.prepare(`DELETE FROM hb_tokens WHERE user_id=? AND kind='reset' AND ${fence}`).bind(user.id,user.id,epoch+1,next),
+    ]);
+    if(changed[0].meta.changes!==1)throw new ProductError('Your account changed. Sign in again before changing your password.',409);
+    return await revoke(request,env);
+   }
    if(path==='auth/resend'&&request.method==='POST') {await rate(env,`verify:${user.id}`,now,2);const input=await readJSON(request,4096);await sendToken(env,user,'verify',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);return json({message:'Verification email sent.'});}
    if(path==='preferences') {
     if(request.method==='GET')return json(await profileFor(env,user.id,{},now));

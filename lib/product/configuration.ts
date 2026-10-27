@@ -42,6 +42,6 @@ const verifiedSchemas=new WeakSet<object>();
 export async function assertSchema(env:ProductEnv){
  if(!env.DB||verifiedSchemas.has(env.DB))return;
  const row=await env.DB.prepare('SELECT version FROM heartbeat_schema ORDER BY version DESC LIMIT 1').first<{version:number}>();
- if(!row||row.version<13)throw new Error('Apply the reviewed database migrations before running this version.');
+ if(!row||row.version<14)throw new Error('Apply the reviewed database migrations before running this version.');
  verifiedSchemas.add(env.DB);
 }

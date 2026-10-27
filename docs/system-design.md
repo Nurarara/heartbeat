@@ -4,6 +4,8 @@ Updated 27 October 2026 against the local architecture implementation. The code 
 
 ## Customer entry and recording mode
 
+Authentication supports a Heartbeat password and an optional Google OpenID Connect client. The Google authorization-code flow keeps client credentials server-side, uses PKCE and one-use state, validates signed Google ID tokens and binds the stable Google subject to an account. Existing unverified accounts require a signed-in user to link Google; a Google-only user can set a Heartbeat password from a recent Google session. Google account setup and real consent/login testing remain operator steps. Email verification and reset need configured delivery; the local operator can issue a one-use reset link through `npm run account:recover` without altering cloud data.
+
 ```mermaid
 flowchart LR
     LAND[Landing] --> DEMO["Public /demo\nTen prepared WebP artworks\n10-second timer / decode / crossfade"]
@@ -160,6 +162,7 @@ Account deletion cannot race an open/confirming Checkout or a live checkout/reco
 | Deploy token | Not needed for local use | GitHub environment `DEPLOY_CLOUDFLARE_TOKEN` | No |
 | Weather key | Free local adapter needs none | Environment `WEATHER_API_KEY`, sent only server-to-provider | No |
 | Resend key / verified sender | Optional local email test | `EMAIL_API_KEY` / `EMAIL_FROM` | No |
+| Google OAuth client | Optional local sign-in test | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No (ID is public to Google; secret stays server-side) |
 | Stripe secret / webhook signing secret | Separate sandbox setup | Isolated test/live runtime secrets | No |
 | Stripe Price IDs | Nonsecret operator configuration | Distinct allowlisted prices per target | Displayed price data only |
 | Operator recovery key | Optional ignored local setting | Separate `OPERATOR_KEY` secret | No |

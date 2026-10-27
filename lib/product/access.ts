@@ -2,7 +2,7 @@ import { authenticate, type Auth } from './auth.ts';
 import { db, localDevelopment, PLANS, type PlanId, type ProductEnv } from './core.ts';
 import {usageForAccount} from './usage.ts';
 export type AccountAccess = { userId:string;expires:number;eligible:boolean;reason:string;plan:PlanId;allowance:number;baseAllowance?:number;allowanceAdjustment?:number;periodStart:number;periodEnd:number;used:number;cadence:number };
-export async function accessFor(auth:Auth,env:ProductEnv,now:number,local=false):Promise<AccountAccess> {
+export async function accessFor(auth:Pick<Auth,'user'|'expires'>,env:ProductEnv,now:number,local=false):Promise<AccountAccess> {
   const billing=await db(env).prepare('SELECT * FROM hb_billing WHERE user_id=?').bind(auth.user.id).first<{plan:string;status:string;period_start:number;period_end:number;review_required:number}>();
   const paid=!!billing&&!billing.review_required&&['active','trialing'].includes(billing.status)&&billing.period_end>now&&['studio','atelier'].includes(billing.plan);
   const plan:PlanId=paid?billing!.plan as PlanId:'trial', selected=PLANS[plan], periodStart=paid?billing!.period_start:auth.user.created_at, periodEnd=paid?billing!.period_end:8640000000000000;

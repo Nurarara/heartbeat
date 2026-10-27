@@ -15,6 +15,7 @@ const additions=[
  ['hb_assets',null,'0011_runtime_recovery.sql'],
  ['heartbeat_schema',null,'0012_read_and_repair_indexes.sql'],
  ['hb_usage_adjustments',null,'0013_usage_adjustments.sql'],
+ ['hb_google_identities',null,'0014_google_auth.sql'],
 ];
 let backedUp=false;
 function backupLocalDatabase(){

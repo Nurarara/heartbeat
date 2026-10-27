@@ -56,7 +56,7 @@ Before release, keep a record for the exact candidate commit containing:
 
 `npm run product:prepare` upgrades only the local persisted emulator, backs it up under ignored `outputs/backups` before the new architecture migrations, and preserves `.dev.vars`. Keep those backups private: they may contain personal account data. It is not a cloud migration or a substitute for a tested hosted backup.
 
-`npm run check:schema` applies all SQL migrations to an empty SQLite database and compares the generated Drizzle contract. Migrations `0008` through `0013` are additive; the current schema marker is 13 (14 migration files, 36 tables). Do not edit already-applied migrations to fix a deployed database; append a migration.
+`npm run check:schema` applies all SQL migrations to an empty SQLite database and compares the generated Drizzle contract. Migrations `0008` through `0014` are additive; the current schema marker is 14 (15 migration files, 38 tables). The latest migration adds Google identity/state and session authentication metadata. Do not edit already-applied migrations to fix a deployed database; append a migration.
 
 The local upgrade was exercised against this checkout with a restore-checked private SQL backup. It preserved two accounts, 12 attempt records and seven stored-art references. A second preparation run made no further changes. These counts are local migration evidence, not a hosted backup/restore drill.
 

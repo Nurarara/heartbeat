@@ -20,6 +20,7 @@ export function validateReleaseBuild(config,selected,target){
 export function validateReleaseSecrets(selected,target,values){
  const required=['CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_TOKEN','HEARTBEAT_RUNTIME_AI_TOKEN','HEARTBEAT_WEATHER_API_KEY','HEARTBEAT_EMAIL_API_KEY','HEARTBEAT_EMAIL_FROM','HEARTBEAT_OPERATOR_KEY'];
  if(required.some(key=>!values[key]))throw new Error('Required release credentials/settings are missing. Nothing deployed.');
+ if(!!values.HEARTBEAT_GOOGLE_CLIENT_ID!==!!values.HEARTBEAT_GOOGLE_CLIENT_SECRET)throw new Error('Google sign-in requires both client ID and secret.');
  if(target==='staging'&&/^(?:sk|rk)_live_/.test(values.STRIPE_SECRET_KEY||''))throw new Error('Staging cannot use live Stripe credentials.');
  if(selected.billingEnabled){
   if(['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_STUDIO_PRICE_ID','STRIPE_ATELIER_PRICE_ID'].some(key=>!values[key])||values.STRIPE_STUDIO_PRICE_ID===values.STRIPE_ATELIER_PRICE_ID)throw new Error('Billing activation requires complete distinct Stripe settings.');

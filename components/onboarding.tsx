@@ -137,7 +137,7 @@ export default function Onboarding() {
   }
   async function checkVerification(){
     setBusy(true);setError('');
-    try{const value=await refreshAccount();setNotice(value.user.verified||value.local?'Your email is verified. You can enter your world.':'Your email has not been verified yet. Open the link in your inbox, then check again.');}
+    try{const value=await refreshAccount();setNotice(value.user.verified?'Your email is verified. You can enter your world.':value.local?'Your email is not verified yet. The local demo can still continue.':'Your email has not been verified yet. Open the link in your inbox, then check again.');}
     catch(reason){setError((reason as Error).message);}finally{setBusy(false);}
   }
   async function checkout(){
