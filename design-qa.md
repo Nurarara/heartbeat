@@ -12,6 +12,8 @@ The player capture harness initially showed a 44-pixel top shift and bottom band
 
 The reviewed new screens share the approved navy/ivory/Manrope brand, give the artwork most of the screen, keep one clear step/action at a time and identify prepared/illustrative content. The desktop demo and mobile onboarding are coherent with that direction. A further real-browser review of landing/pricing/registration found the new demo link touching the primary landing invitation. Scoped flex placement and spacing fixed it; fresh 1440/390/320 captures were inspected, with separate actions, clear nav/heading/rail and no horizontal overflow. Narrow sign-in navigation is kept on one line. Evidence is in ignored `outputs/landing-final-qa`.
 
+The built-preview check also caught incompatible client-side routing when leaving the isolated recording player. Its exit/sign-up links now use full-document navigation, which discards playback/fullscreen state and matches the established application navigation. The scoped lint exception records that intent; correctness is checked in the built browser, separately from simulated DOM tests.
+
 This is a bounded screenshot/interaction review, not a claim of pixel fidelity to either reference website or a completed accessibility/performance audit. The existing studio and physical devices still need broader acceptance, as do keyboard/screen-reader review, night comfort and battery measurements.
 
 ## Historical browser-access limitation
