@@ -1,4 +1,17 @@
-export type ProductEnv = { DB?: D1Database; BUCKET?: R2Bucket; HEARTBEAT_APP_ORIGIN?: string; HEARTBEAT_APP_MODE?: string; HEARTBEAT_AI_ENABLED?: string; HEARTBEAT_EMAIL_API_KEY?: string; HEARTBEAT_EMAIL_FROM?: string; STRIPE_SECRET_KEY?: string; STRIPE_WEBHOOK_SECRET?: string; STRIPE_STUDIO_PRICE_ID?: string; STRIPE_ATELIER_PRICE_ID?: string; HEARTBEAT_BILLING_ENABLED?: string; ARTWORK_WORKFLOW?: { create(input: { id: string; params: { jobId: string } }): Promise<unknown>; get(id: string): Promise<{ status(): Promise<{ status: string }> }> } };
+export type ProductEnv = {
+ DB?:D1Database; BUCKET?:R2Bucket; HEARTBEAT_APP_ORIGIN?:string; HEARTBEAT_APP_MODE?:string; HEARTBEAT_DEPLOYMENT_ENV?:string;
+ HEARTBEAT_AI_ENABLED?:string; HEARTBEAT_AI_DAILY_LIMIT?:string; HEARTBEAT_AI_ACCESS_KEY?:string;
+ CLOUDFLARE_ACCOUNT_ID?:string; CLOUDFLARE_API_TOKEN?:string; HEARTBEAT_DIRECTOR_MODEL?:string; HEARTBEAT_IMAGE_MODEL?:string;
+ HEARTBEAT_EMAIL_API_KEY?:string; HEARTBEAT_EMAIL_FROM?:string; STRIPE_SECRET_KEY?:string; STRIPE_WEBHOOK_SECRET?:string;
+ HEARTBEAT_GOOGLE_CLIENT_ID?:string; HEARTBEAT_GOOGLE_CLIENT_SECRET?:string;
+ STRIPE_STUDIO_PRICE_ID?:string; STRIPE_ATELIER_PRICE_ID?:string; HEARTBEAT_BILLING_ENABLED?:string;
+ HEARTBEAT_TRUST_CLOUDFLARE_IP?:string; HEARTBEAT_LEGACY_ROUTES_ENABLED?:string; HEARTBEAT_OPERATOR_KEY?:string;
+ HEARTBEAT_WEATHER_PROVIDER?:string; HEARTBEAT_WEATHER_API_KEY?:string; HEARTBEAT_WEATHER_FORECAST_URL?:string;
+ HEARTBEAT_WEATHER_GEOCODING_URL?:string; HEARTBEAT_WEATHER_ALLOWED_HOSTS?:string; HEARTBEAT_WEATHER_ATTRIBUTION?:string;
+ HEARTBEAT_DAILY_BUDGET_MICROS?:string; HEARTBEAT_DIRECTOR_ESTIMATE_MICROS?:string; HEARTBEAT_IMAGE_ESTIMATE_MICROS?:string;
+ HEARTBEAT_PROVIDER_CONCURRENCY?:string; HEARTBEAT_MAX_QUEUE_AGE_MS?:string;
+ ARTWORK_WORKFLOW?:{create(input:{id:string;params:{jobId:string}}):Promise<unknown>;get(id:string):Promise<{status():Promise<{status:string}>;restart?():Promise<unknown>}>};
+};
 export class ProductError extends Error { status:number; constructor(message: string, status = 400) { super(message); this.status=status; } }
 export const json = (data: unknown, status = 200, headers: Record<string,string> = {}) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', ...headers } });
 export function db(env: ProductEnv) { if (!env.DB) throw new ProductError('Account storage is not configured.', 503); return env.DB; }

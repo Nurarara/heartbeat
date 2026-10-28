@@ -1,0 +1,85 @@
+{
+  "method": "WebP quality86, unchanged dimensions; originals retained",
+  "images": [
+    {
+      "source": "public\\demo\\art\\01-sunday-window.png",
+      "output": "public\\demo\\art\\01-sunday-window.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2185155,
+      "deliveryBytes": 178920
+    },
+    {
+      "source": "public\\demo\\art\\02-meadow-play.png",
+      "output": "public\\demo\\art\\02-meadow-play.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2864096,
+      "deliveryBytes": 354318
+    },
+    {
+      "source": "public\\demo\\art\\03-london-rain.png",
+      "output": "public\\demo\\art\\03-london-rain.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2882499,
+      "deliveryBytes": 393440
+    },
+    {
+      "source": "public\\demo\\art\\04-watercolour-coast.png",
+      "output": "public\\demo\\art\\04-watercolour-coast.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2886796,
+      "deliveryBytes": 278216
+    },
+    {
+      "source": "public\\demo\\art\\05-winter-refuge.png",
+      "output": "public\\demo\\art\\05-winter-refuge.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2448517,
+      "deliveryBytes": 227210
+    },
+    {
+      "source": "public\\demo\\art\\06-starlit-water.png",
+      "output": "public\\demo\\art\\06-starlit-water.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2127065,
+      "deliveryBytes": 132154
+    },
+    {
+      "source": "public\\demo\\art\\07-mountain-observatory.png",
+      "output": "public\\demo\\art\\07-mountain-observatory.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 3466000,
+      "deliveryBytes": 389992
+    },
+    {
+      "source": "public\\demo\\art\\08-moss-after-rain.png",
+      "output": "public\\demo\\art\\08-moss-after-rain.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2613533,
+      "deliveryBytes": 287600
+    },
+    {
+      "source": "public\\demo\\art\\09-desert-night-drive.png",
+      "output": "public\\demo\\art\\09-desert-night-drive.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2096345,
+      "deliveryBytes": 121810
+    },
+    {
+      "source": "public\\demo\\art\\10-autumn-railway.png",
+      "output": "public\\demo\\art\\10-autumn-railway.webp",
+      "width": 1672,
+      "height": 941,
+      "originalBytes": 2975491,
+      "deliveryBytes": 340942
+    }
+  ]
+}

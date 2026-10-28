@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-10-27",
+  "tool": "Built-in image_gen",
+  "purpose": "Prepared recording demonstration; not live generated customer artwork",
+  "transparentBackground": false,
+  "entries": [
+    {
+      "number": 6,
+      "id": "starlit-water",
+      "file": "/demo/art/06-starlit-water.png",
+      "title": "Where the stars settle",
+      "medium": "Cinematic celestial painting",
+      "scene": "Deep-indigo galaxy over an alien lake",
+      "night": true,
+      "source": "exec-3339d488-3630-408d-8843-2152f7d45234.png",
+      "prompt": "Use case: stylized-concept. Asset type: final ambient wallpaper artwork for Heartbeat, image06 of a prepared recording demonstration. Primary request: a deep-indigo star field and restrained distant violet-blue nebula reflected in a quiet alien lake. A narrow low horizon with dark simple rocks anchors the immense celestial sky, subtle reflected stars on nearly still water. Sophisticated cinematic matte-painting realism, original serene universe, no recognizable franchise. Composition: very wide cinematic landscape, preferably16:9, important visual information safely within the middle60percent so cropping on ultrawide and portrait can remain calm. Lighting: truly dark restful night, predominantly deep navy and near-black, tiny dim stars, no sun, no bright white nebula, no glaring foreground. Refined texture and atmospheric depth, elegant not flashy. Render just the single complete artwork edge-to-edge: no words, typography, UI, watermark, logos, borders, collage or contact sheet. Opaque background.",
+      "width": 1672,
+      "height": 941,
+      "objectPosition": "50% 50%",
+      "sha256": "f18c1c39ff9dce071a2da2723ddde2a6bd7ee945705ed605288825c547f1d931"
+    },
+    {
+      "number": 7,
+      "id": "mountain-observatory",
+      "file": "/demo/art/07-mountain-observatory.png",
+      "title": "An observatory above the clouds",
+      "medium": "Graphite and pencil",
+      "scene": "Cold overcast alpine morning",
+      "night": false,
+      "source": "exec-4765ce11-2a96-4651-827e-8daec32db2e0.png",
+      "prompt": "Use case: stylized-concept. Asset type: original artwork for an ambient wallpaper product, single full-bleed landscape. Primary request: an intricate graphite and pencil drawing of a mountain observatory surrounded by windswept pines on a cold overcast morning. A small elegant observatory dome and old stone research buildings are seen from a distant ridge; winding paths and layered alpine slopes, delicate mist in the valley. Exquisite architectural perspective and believable fine details: stone joints, weathered roof seams, fine pine needles, careful cross-hatching and restrained charcoal shadows on subtly textured pale grey paper. Sophisticated museum-quality drawing, not a photo filter. Very wide cinematic landscape preferably16:9, important observatory remains in central safe area, generous surrounding mountain atmosphere, no large foreground object. Quiet and aesthetic, soft diffuse light, no glaring whites. No text, lettering, labels, signature, watermarks, logos, frame, border, collage or UI. Single complete image only, opaque background.",
+      "width": 1672,
+      "height": 941,
+      "objectPosition": "50% 50%",
+      "sha256": "c81828fb5355d7a1c527995c995d482e20ee1a278ba1811ee70077926ddbfabf"
+    },
+    {
+      "number": 8,
+      "id": "moss-after-rain",
+      "file": "/demo/art/08-moss-after-rain.png",
+      "title": "A forest in a raindrop",
+      "medium": "Macro natural photography",
+      "scene": "Moss and fern after rain",
+      "night": false,
+      "source": "exec-0a5cea9c-6c1c-4498-8755-42f46bcbbfad.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: final ambient wallpaper, one complete wide landscape artwork. Primary request: a macro miniature forest of vivid but soft moss, delicate raindrop-covered fern fronds and a tiny reflective puddle after rain. Extremely tactile real natural photography, minute moss structures, tiny imperfect water droplets, soft wet soil, one fern arch curving naturally over the small puddle. Cinematic macro lens with convincing shallow depth of field and a sense of a vast landscape in small natural things. Diffuse cloudy morning light, deep soft woodland green, sea-glass reflections, restrained saturation and gentle contrast. Wide landscape preferably16:9, clear detail around the central safe area while edges dissolve into calm bokeh. No insects, people, fantasy creatures or extra props. No words, typography, logo, watermark, borders, frames, collage, UI or contact sheet. Photographic texture not synthetic plastic or oversharpened render. Opaque edge-to-edge image.",
+      "width": 1672,
+      "height": 941,
+      "objectPosition": "50% 50%",
+      "sha256": "4d709ac223ca14b1c21118eb1b21217a0c935f8fe6db84fe5605c5ca4b34865c"
+    },
+    {
+      "number": 9,
+      "id": "desert-night-drive",
+      "file": "/demo/art/09-desert-night-drive.png",
+      "title": "Somewhere under the Milky Way",
+      "medium": "Cinematic nocturne",
+      "scene": "A distant vehicle in the desert at night",
+      "night": true,
+      "source": "exec-33fa0413-9350-45e6-8f22-887599d97a49.png",
+      "prompt": "Use case: stylized-concept. Asset type: final atmospheric ambient wallpaper. Primary request: a solitary tiny old vehicle parked very far away on the floor of a vast empty desert beneath the Milky Way. View from a low distant dune: quiet layers of dark sand and subtle tire tracks, the vehicle only a small restrained silhouette in the middle-distance with a very faint warm cabin light, an immense deep night sky and understated star band above. A poetic cinematic nocturne, finely painterly realism, no people in foreground. Extremely wide open landscape, preferably16:9, important tiny vehicle and distant horizon in central safe area; lots of dark breathing space and natural depth. Predominantly indigo, charcoal and muted dusky sand; genuinely restful dark exposure, no glaring moon, no bright white sky or overblown galaxy. Elegant, tactile, believable, not glossy sci-fi. No text, logos, watermark, UI, border, frame, collage or contact sheet. One full-bleed opaque artwork.",
+      "width": 1672,
+      "height": 941,
+      "objectPosition": "50% 50%",
+      "sha256": "2edde9efa8f50493d7b296079954bce3321d85a55b305275524b7ffa72e95f3a"
+    },
+    {
+      "number": 10,
+      "id": "autumn-railway",
+      "file": "/demo/art/10-autumn-railway.png",
+      "title": "The slow way home",
+      "medium": "Gouache landscape",
+      "scene": "Autumn countryside railway in mist",
+      "night": false,
+      "source": "exec-b0378b55-0496-47b8-8feb-63f216a0abae.png",
+      "prompt": "Use case: illustration-story. Asset type: original final wallpaper landscape for a calm ambient-art product. Primary request: a countryside railway curving through an autumn river valley in light morning mist, with a very small distant train moving quietly among rust-colored trees. Refined hand-painted gouache landscape: tactile pigment and matte paper, understated brushwork, careful believable landscape perspective. Muted copper, ochre, soft olive and mist-blue reflections in a quiet river; cool overcast light rather than bright orange saturation. Broad layered hills fade into fog. View from a far hillside, very wide preferably16:9, the tiny train and bridge are within the central safe area, surrounded by generous quiet valley space; no large people or foreground faces. Elegant nostalgic beauty without franchise imitation. Single full-bleed opaque artwork with no typography, signs, text, logo, signature, watermark, frame, border, collage, contact sheet or UI.",
+      "width": 1672,
+      "height": 941,
+      "objectPosition": "50% 50%",
+      "sha256": "1faa267a95d27e17309254eb5c8f71d0efd1b6e7a665ce0861c981d8e3e2d0fd"
+    }
+  ]
+}

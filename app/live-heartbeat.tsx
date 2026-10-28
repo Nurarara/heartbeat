@@ -6,11 +6,12 @@ import { AmbientArt } from "@/components/ambient-art";
 import { AIControls } from "@/components/ai-controls";
 import { ArtworkStatus } from "@/components/artwork-status";
 import { useAIPlayback } from "@/hooks/use-ai-playback";
+import {useScreenProfile,type ScreenIdentity} from '@/hooks/use-screen-profile';
 import { CreativeTools } from "@/components/creative-tools";
 import { localClock, parsePreferences, usableContext, type AmbientPreferences } from "@/lib/ambient";
 import { planMoment, type StoryMemory } from "@/lib/ambient-director";
 import { useAmbientDirector } from "@/hooks/use-ambient-director";
-import { collectContext, searchPlaces } from "@/lib/context";
+import { collectContext, searchPlaces,localWeatherFallbackAllowed } from "@/lib/context";
 import { LONDON, type Context, type Place } from "@/lib/world";
 import { weatherCue } from "@/lib/weather-mood";
 
@@ -19,7 +20,7 @@ const seed = () => crypto.getRandomValues(new Uint32Array(1))[0] || 1;
 const placeKey = (place: Place) => `${place.latitude},${place.longitude}:${place.timezone}`;
 const placeLabel = (place: Place) => `${place.name}, ${place.country}`;
 
-function CitySearch({ initial, onChoose }: { initial?: Place; onChoose: (place: Place) => void }) {
+function CitySearch({ initial, onChoose,customer=false }: { initial?: Place; onChoose: (place: Place) => void;customer?:boolean }) {
   const [query, setQuery] = useState(initial ? placeLabel(initial) : "");
   const [results, setResults] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false);
@@ -45,8 +46,9 @@ function CitySearch({ initial, onChoose }: { initial?: Place; onChoose: (place: 
           if (!response.ok) throw new Error("City search unavailable");
           const data = await response.json() as { locations: Place[] };
           places = data.locations;
-        } catch {
+        } catch(error) {
           if (abort.signal.aborted) return;
+          if(!localWeatherFallbackAllowed(customer,window.location))throw error;
           places = await searchPlaces(query.trim(), AbortSignal.any([abort.signal, AbortSignal.timeout(10000)]));
         }
         if (!abort.signal.aborted) { setResults(places); setExpanded(true); setMessage(places.length ? "" : "No matching city. Try a nearby city or add the country."); }
@@ -54,7 +56,7 @@ function CitySearch({ initial, onChoose }: { initial?: Place; onChoose: (place: 
       finally { if (!abort.signal.aborted) setBusy(false); }
     }, 300);
     return () => { clearTimeout(timer); abort.abort(); };
-  }, [query, resolved]);
+  }, [query, resolved,customer]);
   function choose(place: Place) { setExpanded(false); setSelection(place); onChoose(place); }
   return <div className="hb-city-search">
     <div className="hb-search"><Search className="hb-search-icon" size={18} aria-hidden="true" /><input autoComplete="off" autoFocus={!initial} className="hb-city-input" aria-label="Your city" placeholder="Your city" role="combobox" aria-autocomplete="list" aria-expanded={expanded && results.length > 0} aria-controls={`${id}-results`} aria-activedescendant={expanded && active >= 0 ? `${id}-${active}` : undefined} value={query} onChange={event => { setQuery(event.target.value); setSelection(undefined); setExpanded(true); }} onFocus={() => setExpanded(true)} onKeyDown={event => {
@@ -68,7 +70,7 @@ function CitySearch({ initial, onChoose }: { initial?: Place; onChoose: (place: 
   </div>;
 }
 
-function useOutdoorContext(place: Place | undefined, onClockOffset: (offset: number) => void) {
+function useOutdoorContext(place: Place | undefined, onClockOffset: (offset: number) => void,customer:boolean) {
   const [reading, setReading] = useState<{ key: string; context: Context } | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -92,8 +94,9 @@ function useOutdoorContext(place: Place | undefined, onClockOffset: (offset: num
           observation = data.context;
           // serverTime is sampled after the upstream weather call, not at request arrival.
           if (!disposed && Number.isFinite(data.serverTime)) onClockOffset(data.serverTime - Date.now());
-        } catch {
+        } catch(error) {
           if (abort.signal.aborted) return;
+          if(!localWeatherFallbackAllowed(customer,window.location))throw error;
           observation = await collectContext(target!, abort.signal);
         }
         if (!disposed && !abort.signal.aborted) { setReading({ key, context: observation }); setFailed(false); }
@@ -106,11 +109,11 @@ function useOutdoorContext(place: Place | undefined, onClockOffset: (offset: num
     const resume = () => { if (!document.hidden) void refresh(); };
     document.addEventListener("visibilitychange", resume);
     return () => { disposed = true; active?.abort(); clearInterval(interval); document.removeEventListener("visibilitychange", resume); refreshRef.current = () => {}; };
-  }, [key, place, onClockOffset]);
+  }, [key, place, onClockOffset,customer]);
   return { context: reading?.key === key ? reading.context : null, failed, loading, refresh: () => refreshRef.current() };
 }
 
-export default function LiveHeartbeat({customer = false, initialPreferences, initialMemory}:{customer?:boolean;initialPreferences?:AmbientPreferences;initialMemory?:StoryMemory|null} = {}) {
+export default function LiveHeartbeat({customer = false, initialPreferences, initialMemory, initialPreferencesVersion=0,initialSurface}:{customer?:boolean;initialPreferences?:AmbientPreferences;initialMemory?:StoryMemory|null;initialPreferencesVersion?:number;initialSurface?:ScreenIdentity} = {}) {
   const [preferences, setPreferences] = useState<AmbientPreferences | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [now, setNow] = useState(0), [offset, setOffset] = useState(0);
@@ -157,18 +160,29 @@ export default function LiveHeartbeat({customer = false, initialPreferences, ini
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
   }, [offset]);
   const changeOffset = useCallback((value: number) => setOffset(value), []);
-  const outdoors = useOutdoorContext(preferences?.location, changeOffset);
+  const outdoors = useOutdoorContext(preferences?.location, changeOffset,customer);
   const usable = usableContext(outdoors.context, now);
   const storageFailure = useCallback(() => setStorageAvailable(false), []);
   const director = useAmbientDirector(preferences, outdoors.context, now, paused, storageFailure, initialMemory);
   const [openingDirection] = useState(() => planMoment(LONDON, null, Date.now(), null, 731921).direction);
-  const ai = useAIPlayback({ base: director.direction, memory: director.memory, preferences, at: now, paused, visible: director.visible, accept: director.acceptGenerated, reject: director.rejectGenerated, localCanDisplay: director.canDisplay },customer);
+  const screenReady=useScreenProfile(customer&&!!preferences,initialSurface);
+  const ai = useAIPlayback({ base: director.direction, memory: director.memory, preferences, at: now, paused, visible: director.visible&&screenReady, accept: director.acceptGenerated, reject: director.rejectGenerated, localCanDisplay: director.canDisplay },customer);
+  const serverVersion=useRef(initialPreferencesVersion);
+  const savedPreferences=useRef(initialPreferences?JSON.stringify(initialPreferences):'');
   useEffect(()=>{
-    if(!customer||!preferences)return;
+    if(!customer||!preferences||JSON.stringify(preferences)===savedPreferences.current)return;
     const abort=new AbortController();
-    const timer=setTimeout(()=>{fetch('/api/product/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preferences,memory:director.memory}),signal:abort.signal}).then(r=>{if(!r.ok)throw new Error('Save failed');}).catch(()=>{if(!abort.signal.aborted)setNotice('Your latest changes could not sync. Keep this display open and try again.');});},700);
+    const timer=setTimeout(async()=>{try{
+      const r=await fetch('/api/product/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preferences,expectedVersion:serverVersion.current}),signal:abort.signal});
+      if(!r.ok){if(r.status===409){const current=await (await fetch('/api/product/preferences')).json() as {preferences:AmbientPreferences;version:number};savedPreferences.current=JSON.stringify(current.preferences);serverVersion.current=current.version;setPreferences(current.preferences);throw new Error('Preferences changed on another screen. The latest settings were loaded.');}throw new Error('Your latest settings could not sync.');}
+      const current=await r.json() as {preferences:AmbientPreferences;version:number};serverVersion.current=current.version;savedPreferences.current=JSON.stringify(current.preferences);
+    }catch(error){if(!abort.signal.aborted)setNotice((error as Error).message);}},700);
     return()=>{clearTimeout(timer);abort.abort();};
-  },[customer,preferences,director.memory]);
+  },[customer,preferences]);
+  const pictureFeedback=useCallback((proposal:Parameters<typeof director.feedback>[0],preference:'more'|'less')=>{
+    director.feedback(proposal,preference);
+    if(customer){const id=director.memory?.history.at(-1)?.direction.artwork?.attemptId;if(id)fetch('/api/product/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,preference,eventId:crypto.randomUUID()})}).then(r=>{if(!r.ok)throw new Error('Feedback could not sync.');}).catch(e=>setNotice(e.message));}
+  },[customer,director.feedback,director.memory]);
   const direction = ai.displayDirection || openingDirection;
   const clock = preferences ? localClock(preferences.location, now) : null;
   const temperature = usable?.temperature != null ? Math.round(preferences?.unit === "f" ? usable.temperature * 9 / 5 + 32 : usable.temperature) : null;
@@ -238,7 +252,7 @@ export default function LiveHeartbeat({customer = false, initialPreferences, ini
   return <main ref={root} className="heartbeat-live" data-customer={customer} data-running={!!preferences} data-quiet={quiet && !settings} data-paused={paused} data-reduced-motion={preferences?.reducedMotion || false} onPointerMove={reveal} onPointerDown={() => { keyboard.current = false; reveal(); }} onFocusCapture={reveal} onBlurCapture={reveal}>
     {loaded && <AmbientArt direction={direction} paused={paused} reducedMotion={preferences?.reducedMotion || false} visible={director.visible} retryToken={director.retryToken} onError={value => { if (value.artwork) ai.onFailure(value); else director.onFailure(value); }} onDisplayed={preferences ? value => { director.onDisplayed(value); ai.onDisplayed(value); } : undefined} canDisplay={preferences ? ai.canDisplay : undefined} />}
     <div className="hb-art-shade" aria-hidden="true" />
-    {!loaded ? <div className="hb-startup" role="status"><Activity size={24} /><span>heartbeat</span></div> : !preferences ? <section className="hb-opening" aria-label="Choose your city"><h1>heartbeat</h1><CitySearch onChoose={chooseCity} /></section> : <>
+    {!loaded ? <div className="hb-startup" role="status"><Activity size={24} /><span>heartbeat</span></div> : !preferences ? <section className="hb-opening" aria-label="Choose your city"><h1>heartbeat</h1><CitySearch customer={customer} onChoose={chooseCity} /></section> : <>
       <header className="hb-header hb-chrome"><div className="hb-brand"><Activity size={23} strokeWidth={1.3} aria-hidden="true" /><span>heartbeat</span></div><div className="hb-header-actions">{customer&&<a className="hb-studio-link" href="/app">Your studio <ArrowRight size={13}/></a>}<button className="hb-city-button" aria-label={`Change city, currently ${placeLabel(preferences.location)}`} onClick={() => setSettings(true)}><span className="hb-city-name">{preferences.location.name}</span><ChevronDown size={13} /></button></div></header>
       <div className="hb-display-meta"><div className="hb-readings"><div className="hb-clock"><time dateTime={clock!.time}>{clock!.time}</time></div>
       <div className="hb-temperature" aria-label={temperature === null ? "Outdoor temperature unavailable" : `Outdoor temperature ${temperature} degrees ${preferences.unit === "f" ? "Fahrenheit" : "Celsius"}`} title={usable ? `Outdoor estimate · ${new Date(usable.observedAt).toLocaleTimeString("en-GB", { timeZone: preferences.location.timezone, hour: "2-digit", minute: "2-digit" })}` : "Outdoor temperature unavailable"}><strong>{temperature === null ? "—" : temperature}<span>°{preferences.unit.toUpperCase()}</span></strong>{temperature === null && <small className="hb-unavailable">{outdoors.loading ? "Updating outdoors" : "Temperature unavailable"}</small>}</div></div>
@@ -247,7 +261,7 @@ export default function LiveHeartbeat({customer = false, initialPreferences, ini
       </div>
       <footer className="hb-controls hb-chrome" aria-label="Display controls"><button className="hb-icon-button" disabled={false} onClick={() => setPaused(value => !value)} aria-label={paused ? "Resume artwork changes" : "Pause artwork changes"} title={paused ? "Resume (Space)" : "Pause (Space)"}>{paused ? <Play size={17} /> : <Pause size={17} />}</button><button className="hb-icon-button" disabled={paused} onClick={director.requestMoment} aria-label="New artwork variation" title="A fresh visual idea"><Sparkles size={17} /></button><button className="hb-icon-button" onClick={fullscreen} aria-label="Toggle fullscreen" title="Fullscreen (F)"><Expand size={17} /></button><button ref={settingsButton} className="hb-icon-button" onClick={() => setSettings(true)} aria-label="City and display settings" title="Settings (S)"><Settings2 size={17} /></button></footer>
     </>}
-    {settings && preferences && <div className="hb-panel-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) setSettings(false); }}><section ref={dialog} className="hb-panel" role="dialog" aria-modal="true" aria-labelledby="hb-panel-title" aria-describedby="hb-panel-description"><header className="hb-panel-header"><h2 id="hb-panel-title" className="hb-panel-title">{customer?"Your atmosphere":"Make room for the day."}</h2><button className="hb-icon-button" aria-label="Close settings" onClick={() => setSettings(false)}><X size={19} /></button></header><CitySearch key={placeKey(preferences.location)} initial={preferences.location} onChoose={chooseCity} /><div className="hb-unit-buttons" role="group" aria-label="Temperature unit"><span>Temperature</span><button aria-pressed={preferences.unit === "c"} onClick={() => setPreferences(value => value && ({ ...value, unit: "c" }))}>°C</button><button aria-pressed={preferences.unit === "f"} onClick={() => setPreferences(value => value && ({ ...value, unit: "f" }))}>°F</button></div><label className="hb-toggle"><span>Gentler transitions</span><input type="checkbox" checked={preferences.reducedMotion} onChange={event => setPreferences(value => value && ({ ...value, reducedMotion: event.target.checked }))} /></label><label className="hb-toggle"><span>Festive touches near year-end</span><input type="checkbox" checked={preferences.festiveTouches === true} onChange={event => setPreferences(value => value && ({ ...value, festiveTouches: event.target.checked }))} /></label><p id="hb-panel-description" className="hb-panel-note">{customer?"Your city, the weather and the time of day guide each new picture. Night comfort stays on.":"Artwork follows time, temperature and season, and remembers recent scenes. A private AI connection can prepare new pictures in the background."}</p>{!customer&&director.direction&&<p className="hb-panel-note">{director.direction.brief.atmosphere}</p>}{director.failed && <p className="hb-panel-note" role="status">The next picture could not be drawn. Your current picture stays; use the sparkle control to try another.</p>}<p className="hb-panel-note">{customer?"Your city and preferences are saved to your account.":storageAvailable?"This browser remembers your city.":"This browser cannot save your city. It will need selecting again next time."} {!customer&&(wake?"Screen stay-awake is active.":"Screen stay-awake depends on your browser.")}</p><div className="hb-panel-footer"><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather by Open-Meteo ↗</a><button className="hb-preferences-button" disabled={outdoors.loading} onClick={outdoors.refresh}>{outdoors.loading ? "Updating…" : "Refresh temperature"}</button></div>{outdoors.failed && <p className="hb-panel-note" role="status">The latest outdoor update failed. Fresh previous data can remain visible; stale temperature is shown as unavailable.</p>}<AIControls key={`ai:${placeKey(preferences.location)}:${director.memory?.history.at(-1)?.direction.artwork?.attemptId || "local"}`} connection={{ ...ai.connection, account: customer || ai.connection.account }} busy={ai.busy} message={ai.message} unlock={ai.unlock} refresh={ai.refresh} taste={director.feedback} current={director.memory?.history.at(-1)?.direction} />{!customer&&<CreativeTools key={`creative:${placeKey(preferences.location)}`} preview={director.previewIdea} feedback={director.feedback} reset={director.resetMemory} memory={director.memory?.creative} />}
+    {settings && preferences && <div className="hb-panel-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) setSettings(false); }}><section ref={dialog} className="hb-panel" role="dialog" aria-modal="true" aria-labelledby="hb-panel-title" aria-describedby="hb-panel-description"><header className="hb-panel-header"><h2 id="hb-panel-title" className="hb-panel-title">{customer?"Your atmosphere":"Make room for the day."}</h2><button className="hb-icon-button" aria-label="Close settings" onClick={() => setSettings(false)}><X size={19} /></button></header><CitySearch customer={customer} key={placeKey(preferences.location)} initial={preferences.location} onChoose={chooseCity} /><div className="hb-unit-buttons" role="group" aria-label="Temperature unit"><span>Temperature</span><button aria-pressed={preferences.unit === "c"} onClick={() => setPreferences(value => value && ({ ...value, unit: "c" }))}>°C</button><button aria-pressed={preferences.unit === "f"} onClick={() => setPreferences(value => value && ({ ...value, unit: "f" }))}>°F</button></div><label className="hb-toggle"><span>Gentler transitions</span><input type="checkbox" checked={preferences.reducedMotion} onChange={event => setPreferences(value => value && ({ ...value, reducedMotion: event.target.checked }))} /></label><label className="hb-toggle"><span>Festive touches near year-end</span><input type="checkbox" checked={preferences.festiveTouches === true} onChange={event => setPreferences(value => value && ({ ...value, festiveTouches: event.target.checked }))} /></label><p id="hb-panel-description" className="hb-panel-note">{customer?"Your city, the weather and the time of day guide each new picture. Night comfort stays on.":"Artwork follows time, temperature and season, and remembers recent scenes. A private AI connection can prepare new pictures in the background."}</p>{!customer&&director.direction&&<p className="hb-panel-note">{director.direction.brief.atmosphere}</p>}{director.failed && <p className="hb-panel-note" role="status">The next picture could not be drawn. Your current picture stays; use the sparkle control to try another.</p>}<p className="hb-panel-note">{customer?"Your city and preferences are saved to your account.":storageAvailable?"This browser remembers your city.":"This browser cannot save your city. It will need selecting again next time."} {!customer&&(wake?"Screen stay-awake is active.":"Screen stay-awake depends on your browser.")}</p><div className="hb-panel-footer"><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather by Open-Meteo ↗</a><button className="hb-preferences-button" disabled={outdoors.loading} onClick={outdoors.refresh}>{outdoors.loading ? "Updating…" : "Refresh temperature"}</button></div>{outdoors.failed && <p className="hb-panel-note" role="status">The latest outdoor update failed. Fresh previous data can remain visible; stale temperature is shown as unavailable.</p>}<AIControls key={`ai:${placeKey(preferences.location)}:${director.memory?.history.at(-1)?.direction.artwork?.attemptId || "local"}`} connection={{ ...ai.connection, account: customer || ai.connection.account }} busy={ai.busy} message={ai.message} unlock={ai.unlock} refresh={ai.refresh} taste={pictureFeedback} current={director.memory?.history.at(-1)?.direction} />{!customer&&<CreativeTools key={`creative:${placeKey(preferences.location)}`} preview={director.previewIdea} feedback={director.feedback} reset={director.resetMemory} memory={director.memory?.creative} />}
     {!customer&&<p className="hb-panel-note">Weather context: {weatherCue(outdoors.context, now).summary}</p>}
     <button className="hb-done-button" onClick={() => setSettings(false)}><Check size={16} />Done</button></section></div>}
     {!preferences&&notice && <p className="hb-notice" role="status">{notice}<button aria-label="Dismiss message" onClick={() => setNotice("")}><X size={14} /></button></p>}

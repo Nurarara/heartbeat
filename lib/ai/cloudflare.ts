@@ -93,11 +93,31 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
       const content = JSON.stringify(packet);
       if (content.length > 24000) throw new Error('Director context is too large.');
       // Avoid the provider's constrained-schema compiler; validate the full contract locally.
-      const system = `${DIRECTOR_SYSTEM}\nRespect context.preferredStyle when supplied, while still varying subjects and composition. Use context.weather to shape atmosphere and lighting. Rain, fog or overcast conditions call for subdued light, softened distance or sheltered comfort rather than defaulting to a bright summer sky. Express this creatively across varied subjects and places; do not repeat the same rainy window. Unknown weather stays unknown. Nighttime darkness always takes priority.\nReturn a JSON object matching this schema: ${JSON.stringify(DIRECTOR_SCHEMA)}${options.mustReimagine ? '\nThis request requires REIMAGINE; HOLD is not permitted.' : ''}`;
+      const system = `${DIRECTOR_SYSTEM}\nRespect context.preferredStyle when supplied, while still varying subjects and composition. Use context.weather to shape atmosphere and lighting. Rain, fog or overcast conditions call for subdued light, softened distance or sheltered comfort rather than defaulting to a bright summer sky. Express this creatively across varied subjects and places; do not repeat the same rainy window. Unknown weather stays unknown. Nighttime darkness always takes priority. For themeIds use exact supplied theme id values only, without duplicates; use an empty array if unsure.\nReturn a JSON object matching this schema: ${JSON.stringify(DIRECTOR_SCHEMA)}${options.mustReimagine ? '\nThis request requires REIMAGINE; HOLD is not permitted.' : ''}`;
       const result = await run(director, { messages: [{ role: 'system', content: system }, { role: 'user', content }], max_tokens: 900, temperature: .8, stream: false, response_format: { type: 'json_object' } }, 128000, options.signal);
       let value: unknown = result.response;
-      try { if (typeof value === 'string') value = JSON.parse(value); return parseModelDirection(value, packet, options.mustReimagine); }
-      catch { throw new ProviderFailure('invalid-output', false); }
+      try {
+        if (typeof value === 'string') value = JSON.parse(value);
+        // Theme IDs are optional bookkeeping, not part of the image prompt. Discard
+        // unrecognized or repeated labels rather than losing a valid scene; never
+        // invent memory entries. Keep malformed arrays and HOLD decisions strict.
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const candidate = value as Record<string, unknown>;
+          if (candidate.action === 'REIMAGINE' && Array.isArray(candidate.themeIds) && candidate.themeIds.length <= 21 && candidate.themeIds.every(id => typeof id === 'string')) {
+            const allowed = new Set(packet.inspiration.flatMap(item => item.themes.map(theme => theme.id)));
+            value = { ...candidate, themeIds: [...new Set(candidate.themeIds.filter(id => allowed.has(id)))] };
+          }
+        }
+        return parseModelDirection(value, packet, options.mustReimagine);
+      }
+      catch (error) {
+        const failure=new ProviderFailure('invalid-output',false);
+        const explanation=error instanceof Error?error.message.toLowerCase():'';
+        failure.hints=[typeof value==='string'?'director-json':'director-contract',...['theme','framing','night','hold','response'].filter(word=>explanation.includes(word))];
+        const candidate=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
+        console.warn('Heartbeat director validation rejected',{hints:failure.hints,titleLength:typeof candidate?.title==='string'?candidate.title.length:null,reasonLength:typeof candidate?.reason==='string'?candidate.reason.length:null,promptLength:typeof candidate?.prompt==='string'?candidate.prompt.length:null,promptLimit:packet.rules.maximumPromptCharacters,themeCount:Array.isArray(candidate?.themeIds)?candidate.themeIds.length:null});
+        throw failure;
+      }
     },
     async generate(direction: ModelDirection, packet: DirectorPacket, signal?: AbortSignal) {
       // FLUX schnell documents prompt/steps. Seed and landscape dimensions are not promised.
