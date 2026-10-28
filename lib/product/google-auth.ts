@@ -33,7 +33,9 @@ export async function startGoogle(request:Request,env:ProductEnv,now:number){
  if(!googleConfigured(env))throw new ProductError('Google sign-in is not configured yet.',503);
  const origin=originFor(request,env),url=new URL(request.url),journey=readJourney(url.search),next=safeJourneyDestination(journey.next)||`/onboarding?plan=${journey.plan}`;
  await rate(env,'google-start:global',now,120,60000);await rate(env,`google-start:${trustedActor(request,env)}`,now,20);
- const current=await authenticate(request,env,now),state=randomToken(),verifier=randomToken(),nonce=randomToken(),callback=`${origin}/api/product/auth/google/callback`;
+ const linking=url.searchParams.get('intent')==='link',current=linking?await authenticate(request,env,now):null;
+ if(linking&&!current)throw new ProductError('Sign in to Heartbeat before connecting Google.',401);
+ const state=randomToken(),verifier=randomToken(),nonce=randomToken(),callback=`${origin}/api/product/auth/google/callback`;
  const challenge=b64url(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
  const database=db(env);await database.prepare('DELETE FROM hb_google_states WHERE rowid IN (SELECT rowid FROM hb_google_states WHERE expires<=? LIMIT 100)').bind(now).run();
  await database.prepare('INSERT INTO hb_google_states(state_hash,verifier,nonce,redirect_uri,continuation,plan,owner_id,credential_epoch,expires) VALUES (?,?,?,?,?,?,?,?,?)').bind(await hash(state),verifier,nonce,callback,next,journey.plan,current?.user.id||null,current?.user.credential_epoch??null,now+600000).run();
