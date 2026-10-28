@@ -66,7 +66,7 @@ Implemented: email/password accounts, Google OAuth integration, opaque server se
 
 Stripe Checkout/Portal and signed webhook processing are implemented. Access derives from server subscription state; checkout redirects and browser plan fields cannot grant it. Reconciliation reads current Stripe state rather than assuming event arrival order. Real sandbox lifecycle qualification is still required, including refund/dispute object shapes and manual review recovery.
 
-Resend delivery is implemented but real sender verification and inbox delivery remain operator setup. Local development explicitly bypasses verification only on HTTP loopback; that is not acceptable production authentication behaviour.
+Resend delivery is implemented. The operator confirmed a locally delivered password-reset email, successful reset and Google sign-in afterward using Resend's restricted test sender. A verified sender domain and real production-mode verification delivery remain operator setup. Local development explicitly bypasses verification only on HTTP loopback; that is not acceptable production authentication behaviour.
 
 ### Playback and night comfort
 
