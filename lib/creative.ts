@@ -89,6 +89,14 @@ function hash(value: string): number {
   for (const character of value) number = Math.imul(number ^ character.charCodeAt(0), 16777619);
   return number >>> 0;
 }
+/** Stable novelty hint for director ideas. Empty theme lists use the actual brief,
+ * never a job ID; this detects normalized exact repeats, not semantic similarity. */
+export function directorFingerprint(themes: Pick<ThemeEntry, 'id' | 'category'>[], prompt: string): string {
+  const ids = themes.filter(item => ['place', 'subject', 'activity', 'viewpoint'].includes(item.category)).map(item => item.id).sort();
+  if (ids.length) return ids.join('|');
+  const brief = prompt.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return `invented-${hash(brief).toString(36)}-${hash(`brief:${brief}`).toString(36)}`;
+}
 function random(seed: number) {
   let value = seed || 1;
   return () => { value ^= value << 13; value ^= value >>> 17; value ^= value << 5; return (value >>> 0) / 0x1_0000_0000; };

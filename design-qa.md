@@ -2,6 +2,10 @@
 
 current result: browser checks passed for the new demo/onboarding; full visual/device qualification remains open
 
+## 28 October standalone demo preview
+
+The demo-only local preview reuses the approved artwork player and typography, replaces the recording-specific introduction with an honest prepared-scenes explanation, and removes account links that do not exist in the isolated preview. Actual Chrome captures at 1440 × 900, 768 × 1024 and 390 × 844 showed no horizontal overflow, broken images or dead links; the player advanced from scene one to scene two after ten seconds with no API calls or reported console errors. The mobile intro was visually inspected. The automated inspector passed with the existing immersive title and palette exceptions, and warned that much secondary text is under 13px; physical devices and external sharing remain untested. Evidence is in ignored `outputs/share-preview-qa` and `outputs/share-preview-inspection`.
+
 ## 27 October browser inspection
 
 Browser access is now available through an isolated real Chrome/CDP session. The new `/demo` intro and city/style/ready onboarding were captured at 1440 × 900, 768 × 1024 and 390 × 844. The player was also checked in ultrawide and 4K browser windows. Reports found no horizontal overflow or broken images across 18 views, no reported console errors, real fullscreen entry and real ten-second image progression. Demo playback made zero API calls. Customer generation/geocoding were intercepted for this visual run; a separate live provider test exists in `docs/architecture-validation.md`.

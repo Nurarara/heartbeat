@@ -6,7 +6,7 @@ import {resolveArtworkInput} from './profiles.ts';
 import {cloudflareProvider,ProviderFailure} from '../ai/cloudflare.ts';
 import {createWeatherAdapter,WeatherUnavailableError} from '../server/weather.ts';
 import {planMoment,parseStoryMemory} from '../ambient-director.ts';
-import {creativePacket,type CreativeProposal} from '../creative.ts';
+import {creativePacket,directorFingerprint,type CreativeProposal} from '../creative.ts';
 import {withScreenFraming} from '../director-contract.ts';
 import {THEME_LIBRARY} from '../creative-library.ts';
 import {localClock} from '../ambient.ts';
@@ -99,7 +99,7 @@ async function reconcileKnownOperations(env:JobEnv,job:Job,now:number){
 async function candidateFor(env:JobEnv,job:Job){
  const saved=await db(env).prepare('SELECT candidate FROM ai_attempts WHERE id=? AND owner=? AND candidate IS NOT NULL').bind(job.id,job.owner).first<{candidate:string}>();if(saved)return JSON.parse(saved.candidate) as AICandidate;
  const c=JSON.parse(job.context!),d=JSON.parse(job.direction!),themes=d.themeIds.map((id:string)=>THEME_LIBRARY.find(t=>t.id===id)).filter(Boolean);
- const fingerprint=themes.filter((t:{category:string})=>['place','subject','activity','viewpoint'].includes(t.category)).map((t:{id:string})=>t.id).sort().join('|')||`invented-${job.id}`;
+ const fingerprint=directorFingerprint(themes,d.prompt);
  const proposal:CreativeProposal={...c.packet.inspiration[0],source:'ai-director',id:`idea-${job.id}`,fingerprint,title:d.title,prompt:d.prompt,themes:themes.map(({id,label,category}:{id:string;label:string;category:CreativeProposal['themes'][number]['category']})=>({id,label,category})),lighting:d.lighting};
  const input=JSON.parse(job.input);return {id:job.id,requestId:job.request_id,worldId:job.world_id,surfaceId:job.surface_id,preferencesVersion:input.preferencesVersion,locationKey:c.baseline.locationKey,createdAt:job.created_at,direction:{...c.baseline,id:`generated-${job.id}`,reason:d.reason,artwork:{attemptId:job.id,url:`/api/ai/art/${job.id}`,title:d.title,proposal}}};
 }

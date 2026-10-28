@@ -12,6 +12,8 @@ Updated 27 October 2026. The recording demo needs no domain, Stripe account or e
 
 The ten original PNGs are in `public/demo/art`; full generation prompts and built-in Image Generation provenance are in `docs/demo-art-a.json` and `docs/demo-art-b.json`. Optimized WebP copies are served by the player; dimensions are preserved. These files are prepared demo content, not evidence of a live model call every ten seconds.
 
+To prepare the demo for a possible separate share, run `npm run demo:share-preview` and open `http://127.0.0.1:4174/` on this computer. This standalone read-only preview serves an explicit asset allowlist and has no route to customer accounts, generation, payment, or private runtime files. It does not forward to the main local app. It does not create an Internet-accessible link; a separate temporary sharing connection requires its own deliberate setup and access decision. This is a prepared artwork preview, not a full personalized beta.
+
 ## Check what is missing
 
 Run `npm run setup:check`. It checks local field presence without displaying values or calling providers. Configuration and successful real-service acceptance are separate states.

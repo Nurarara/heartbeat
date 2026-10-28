@@ -43,6 +43,8 @@ Open **http://localhost:5173/demo**. No account, domain, Stripe or email configu
 
 The ten distinct original PNGs are retained in `public/demo/art` at **1672×941**. Optimized WebP delivery copies preserve those dimensions; their delivery inventory is [docs/demo-art-delivery.json](docs/demo-art-delivery.json). Full prompts and built-in Image Generation provenance are in [docs/demo-art-a.json](docs/demo-art-a.json) and [docs/demo-art-b.json](docs/demo-art-b.json). Prepared playback is separate from live generation and does not demonstrate a fresh model call every ten seconds. The personal display keeps its normal creative memory, weather awareness, cadence and allowances.
 
+For a demo-only preview separate from your local account and AI service, run `npm run demo:share-preview` and open `http://127.0.0.1:4174/`. This read-only server serves only the prepared demo, its compiled assets and its ten images; it has no account, AI, payment or private-file routes. It is local until a separate sharing connection is deliberately set up. A shareable public URL has not been created. This preview illustrates the product; it does not allow other people to sign in or generate personalized artwork.
+
 ## Guided customer entry and screen fit
 
 The current account journey is **landing/pricing → account → guided city/style setup → ready → personal world**. Selected plan and allowlisted continuation survive sign-in, verification and reset links. New users enter onboarding rather than being dropped into a studio dashboard. Returning users can reopen their existing world. The paid path resumes Checkout only when actual verification and server configuration allow it; a payment return waits for server-confirmed entitlement and cannot grant a plan itself.

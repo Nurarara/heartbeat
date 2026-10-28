@@ -19,6 +19,7 @@ try{
  assert.equal(instances.size,1);const job=f.sqlite.prepare('SELECT * FROM hb_jobs').get();assert.equal(JSON.parse(job.input).location.latitude,51.5);assert.equal(JSON.parse(job.input).memory,null);
  await Promise.all([runArtworkJob(f.env,job.id,deps),runArtworkJob(f.env,job.id,deps)]);
  let done=await (await f.call(`generation?requestId=${requestId}`,undefined,{cookie:a.cookie})).json();assert.equal(done.status,'ready');assert.equal(director,1);assert.equal(images,1);
+ const firstFingerprint=done.candidate.direction.artwork.proposal.fingerprint;assert.match(firstFingerprint,/^invented-[a-z0-9]+-[a-z0-9]+$/,'An untagged AI idea is remembered from its brief, not its random job ID');
  await runArtworkJob(f.env,job.id,deps);assert.equal(images,1);
  assert.equal((await (await f.call('auth/session',undefined,{cookie:a.cookie})).json()).access.used,1);
  assert.equal((await (await f.call('generation',undefined,{cookie:a.cookie})).json()).candidate.id,job.id,'Server discovery does not depend on local storage.');
@@ -31,6 +32,8 @@ try{
  const next=crypto.randomUUID();await f.call('generation',{requestId:next,force:true},{cookie:a.cookie});const second=f.sqlite.prepare('SELECT * FROM hb_jobs WHERE request_id=?').get(next);
  let interrupted=false;try{await runArtworkJob(f.env,second.id,{...deps,fault:boundary=>{if(boundary==='asset_put'&&!interrupted){interrupted=true;throw new Error('injected_crash');}}});}catch(e){assert.match(e.message,/injected_crash/);}
  assert.equal(images,2);await repairArtworkJobs(f.env,f.now());done=await (await f.call(`generation?requestId=${next}`,undefined,{cookie:a.cookie})).json();assert.equal(done.status,'ready');assert.equal(images,2,'An R2 success is recovered without another paid call.');
+ assert.equal(done.candidate.direction.artwork.proposal.fingerprint,firstFingerprint,'The same untagged brief is recognized across separate artwork jobs');
+ await acknowledgeDisplay(f.env,a.data.user.id,{id:second.id,eventId:'second-display'},f.now());const remembered=(await profileFor(f.env,a.data.user.id,{},f.now())).memory.creative;assert.deepEqual(remembered.recent.slice(-2).map(item=>item.fingerprint),[firstFingerprint,firstFingerprint],'Only displayed ideas enter recent memory');
  assert.equal((await (await f.call('auth/session',undefined,{cookie:a.cookie})).json()).access.used,2);
  f.sqlite.prepare("UPDATE hb_artwork_outbox SET state='pending'").run();await dispatchArtworkOutbox(f.env,f.now());assert.equal(instances.size,2);
  const del=await f.call('account/delete',{password:'a long test password'},{cookie:a.cookie});assert.equal(del.status,200);assert.equal((await f.call('library',undefined,{cookie:a.cookie})).status,401);

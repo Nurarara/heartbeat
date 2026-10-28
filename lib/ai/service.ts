@@ -2,7 +2,7 @@ import {acknowledgeDisplay} from '../product/profiles.ts';
 import { cloudflareProvider, ProviderFailure } from './cloudflare.ts';
 import { contextPlace, collectContext } from '../context.ts';
 import { parseStoryMemory, planMoment } from '../ambient-director.ts';
-import { creativePacket, type CreativeProposal } from '../creative.ts';
+import { creativePacket, directorFingerprint, type CreativeProposal } from '../creative.ts';
 import { THEME_LIBRARY } from '../creative-library.ts';
 import type { Context, Place } from '../world.ts';
 import type { AICandidate, AIResult } from './types.ts';
@@ -188,8 +188,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         const repeated = await database().prepare("SELECT id FROM ai_attempts WHERE owner = ? AND image_hash = ? AND status IN ('ready','displayed') LIMIT 1").bind(session.id, imageHash).first();
         if (repeated) throw new Error('Duplicate image rejected.');
         const themes = directed.themeIds.map(themeId => THEME_LIBRARY.find(theme => theme.id === themeId)!);
-        const invented = [...new Set(`${directed.title} ${directed.prompt}`.toLowerCase().match(/[a-z]{4,}/g) || [])].sort().slice(0, 18).join('-').slice(0, 320);
-        const fingerprint = ['place', 'subject', 'activity', 'viewpoint'].flatMap(category => themes.filter(theme => theme.category === category).map(theme => theme.id).sort()).join('|') || `invented-${invented || id}`;
+        const fingerprint = directorFingerprint(themes, directed.prompt);
         const proposal: CreativeProposal = { ...packet.inspiration[0], source: 'ai-director', id: `idea-${id}`, fingerprint, title: directed.title, prompt: directed.prompt, themes: themes.map(({ id: themeId, label, category }) => ({ id: themeId, label, category })), lighting: directed.lighting };
         const artKey = `heartbeat-ai/${session.id}/${id}.jpg`;
         const candidate: AICandidate = { id, requestId: input.requestId, locationKey: keyOf(place), createdAt: at, direction: { ...baseline, id: `generated-${id}`, reason: directed.reason, artwork: { attemptId: id, url: `/api/ai/art/${id}`, title: directed.title, proposal } } };
