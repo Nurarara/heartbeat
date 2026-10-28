@@ -1,5 +1,9 @@
 # Local architecture validation — 26 October 2026
 
+## 28 October artwork follow-up
+
+A live London customer journey first failed because the director returned theme IDs outside the supplied list or repeated IDs. Those IDs are optional creative-memory metadata, not the image prompt. The Cloudflare adapter now discards unknown and duplicate string IDs for a REIMAGINE while retaining only supplied IDs; malformed arrays, HOLD, direction, lighting and night safety remain strictly validated. Provider tests exercise each boundary. A second disposable-account journey generated and privately retrieved **Autumn Afternoon in a Secluded Garden** in about 11 seconds (1024 × 1024 JPEG); both test accounts were deleted. Two of the three local daily preparation attempts were used. This is one successful real image after the fix, not proof of sustained aesthetic variety, weather fidelity, or hosted capacity. Offline sampling also produced 240 unique guided compositions with no recent fingerprint repeats; that result measures briefs, not rendered images.
+
 ## 27 October product and demo follow-up
 
 Authentication follow-up: Google OpenID Connect, password change and local password recovery have real-SQLite tests. Signed JWT claims, PKCE/state/nonce, single-use state, safe account linking and revocation are tested; Google HTTP responses are fixtures. A true Workerd/D1 test verifies the signed-token and multi-cookie redirect path. The Google client and actual consent have not been configured/tested. A disposable local account also completed real Wrangler/D1 recovery, one-use reset, password change, re-login and deletion. Migration 0014 was applied after a local backup was restore-checked; existing accounts and artwork were preserved. A read-only Cloudflare check returned an active token and a successful Workers AI model-catalog response; no inference attempt was consumed by that check.
