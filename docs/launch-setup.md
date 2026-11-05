@@ -12,7 +12,7 @@ Updated 27 October 2026. The recording demo needs no domain, Stripe account or e
 
 The ten original PNGs are in `public/demo/art`; full generation prompts and built-in Image Generation provenance are in `docs/demo-art-a.json` and `docs/demo-art-b.json`. Optimized WebP copies are served by the player; dimensions are preserved. These files are prepared demo content, not evidence of a live model call every ten seconds.
 
-To prepare the demo for a possible separate share, run `npm run demo:share-preview` and open `http://127.0.0.1:4174/` on this computer. This standalone read-only preview serves an explicit asset allowlist and has no route to customer accounts, generation, payment, or private runtime files. It does not forward to the main local app. It does not create an Internet-accessible link; a separate temporary sharing connection requires its own deliberate setup and access decision. This is a prepared artwork preview, not a full personalized beta.
+To preview the demo locally, run `npm run demo:share-preview` and open `http://127.0.0.1:4174/` on this computer. This standalone read-only preview serves an explicit asset allowlist and has no route to customer accounts, generation, payment, or private runtime files. It does not forward to the main local app. A separately deployed [public static preview](https://heartbeat-art-preview.nurarara.chatgpt.site/) is also available. This is a prepared artwork preview, not a full personalized beta; changes to the local player require rebuilding and republishing the separate Site.
 
 ## Check what is missing
 
@@ -68,7 +68,11 @@ References: [Resend domains](https://resend.com/docs/dashboard/domains/introduct
 
 ## Hosted staging and launch
 
-Provision separate Cloudflare Worker, D1, private R2 and Workflow resources for staging/production. The existing inference token may only permit Workers AI; do not assume it can deploy or administer resources. Use separate narrowly scoped deploy/runtime credentials. Fill real resource IDs/origins and approved cost estimates/budgets in `config/environments.json`; placeholders intentionally fail release checks. Commercial weather access is required by hosted policy.
+As of 5 November 2026, the public static artwork preview is hosted separately at https://heartbeat-art-preview.nurarara.chatgpt.site/. It does not use Cloudflare inference or customer account data. The older Heartbeat Site is private and has not been replaced. Its deployed database exposes the original `generations` and `worlds` tables; the first three local migration files match the older Site source, but a backup and a complete hosted migration/rollback plan are still required before applying later migrations there.
+
+A read-only check of the locally configured Cloudflare token on 5 November returned HTTP 200 for the Workers list, HTTP 401 for the D1 database list and HTTP 403 for the R2 bucket list. This does not prove that resources are absent or that write permissions exist; the inference token alone cannot be assumed to provision the full app. ChatGPT Sites supports managed D1/R2, while support for the app's required `ARTWORK_WORKFLOW` binding and scheduler must be confirmed before a full-app deployment. Never weaken the hosted environment checks simply to publish. The local Google OAuth client, Resend test sender and local database are not production-hosted credentials, customer email delivery or hosted user data.
+
+Provision separate Cloudflare Worker, D1, private R2 and Workflow resources for staging/production. Do not assume the existing inference token can deploy or administer resources. Use separate narrowly scoped deploy/runtime credentials. Fill real resource IDs/origins and approved cost estimates/budgets in `config/environments.json`; placeholders intentionally fail release checks. Commercial weather access is required by hosted policy.
 
 Configure GitHub staging/production environments and required reviewers with the exact variable/secret names in `.github/workflows/release.yml`. The protected workflow releases an exact reviewed commit; production requires that same commit's successful staging deployment and recorded acceptance. Billing is disabled by default and must only be activated after the sandbox journey passes.
 
