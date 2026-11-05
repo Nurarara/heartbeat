@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { THEME_LIBRARY } from '../lib/creative-library.ts';
-import { creativePacket, emptyCreativeMemory, parseCreativeMemory, proposeCreativeMoment, recordCreativeFeedback, rememberCreativeDisplay, validateThemeLibrary } from '../lib/creative.ts';
+import { creativePacket, directorFingerprint, emptyCreativeMemory, parseCreativeMemory, proposeCreativeMoment, recordCreativeFeedback, rememberCreativeDisplay, validateThemeLibrary } from '../lib/creative.ts';
 import { finalImagePrompt, parseModelDirection } from '../lib/director-contract.ts';
 
 const now = Date.parse('2026-10-15T08:00:00Z');
@@ -8,6 +8,10 @@ const context = { phase: 'morning', season: 'autumn', temperature: 5, weekday: '
 assert.equal(validateThemeLibrary(), true);
 assert.ok(THEME_LIBRARY.length >= 70);
 assert.equal(validateThemeLibrary([...THEME_LIBRARY, THEME_LIBRARY[0]]), false);
+const invented = directorFingerprint([], 'A  quiet lake\nunder stars.');
+assert.equal(invented, directorFingerprint([], ' a quiet LAKE under stars. '), 'Repeated untagged briefs have a stable fingerprint');
+assert.notEqual(invented, directorFingerprint([], 'A running dog in a field.'), 'Different invented briefs do not share a job-derived identity');
+assert.equal(directorFingerprint([THEME_LIBRARY[1], THEME_LIBRARY[0]], 'One brief'), directorFingerprint([THEME_LIBRARY[0], THEME_LIBRARY[1]], 'Another brief'), 'Theme composition stays order independent');
 const idea = proposeCreativeMoment(context, undefined, 42, now);
 assert.deepEqual(proposeCreativeMoment(context, undefined, 42, now), idea);
 assert.equal(idea.themes.length, 7);

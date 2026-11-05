@@ -1,0 +1,53 @@
+{
+  "created": "2026-10-27",
+  "tool": "built-in image_gen.imagegen",
+  "usage": "Prepared recording-demo artwork. Not dynamically generated during demo playback.",
+  "generated": 5,
+  "images": [
+    {
+      "file": "public/demo/art/01-sunday-window.png",
+      "prompt": "Use case: illustration-story. Asset type: final ambient wallpaper for Heartbeat, wide cinematic 16:9 landscape. A quiet sunny summer Sunday in a modest 1980s Japanese wooden home, viewed from far across the tatami room: a teenage anime boy sleeps peacefully beside an open window, a delicate glass wind chime hangs there, beyond it bright blue sky and a few green trees. Refined original hand-painted anime background art with subtle cel character treatment, beautifully observed wood grain, linen and tatami, soft summer light, gentle calm. Spacious composition, small human figure, important subject contained within central 60 percent safe crop, calm uncluttered corners suitable for clock overlays. A complete artwork edge to edge, not an interface. No text, lettering, captions, logos, watermark, frame or border. No recognizable copyrighted character. High visual detail, softly balanced brightness, no glaring white highlights.",
+      "inspected": true,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    },
+    {
+      "file": "public/demo/art/02-meadow-play.png",
+      "prompt": "Use case: stylized-concept. Asset type: final ambient wallpaper for Heartbeat, wide cinematic 16:9 landscape. A spacious rolling summer meadow viewed from a distant elevated viewpoint, exactly one lone old tree, two tiny dogs joyfully chasing a small ball far away in the field. The dogs are a small part of a vast serene landscape, not a closeup. Fine art landscape painting with exquisite grass and cloud texture, restrained painterly brushwork, warm late-afternoon green and pale gold, a sense of freedom and quiet play. Long generous horizon and ample atmospheric space. Keep key elements within central60percent safe crop, quiet uncluttered lower corners for clock overlays. Complete edge-to-edge painting, no text, letters, logo, watermark, frame or border. Gentle balanced light with no glaring white region.",
+      "inspected": true,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    },
+    {
+      "file": "public/demo/art/03-london-rain.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: Heartbeat ambient wallpaper, wide cinematic 16:9 landscape. A rainy London evening seen from a quiet pedestrian-level viewpoint down an elegant old side street: rain-dark brick and stone, modest Victorian windows, wet pavement reflecting small distant warm lamps, one or two faraway silhouettes under umbrellas. Cinematic editorial photography, original believable city, subtle film grain, realistic rain haze and tactile wet surfaces. Mood: cold gloomy weather made beautiful, intimate and restful, blue-grey shadows and restrained amber reflections, not a neon cyberpunk street. Keep the strongest composition and meaningful details within central60percent with quiet lower corners for subtle clock overlays. Low-key exposure, no large bright foreground lights, no readable signage, no text, no logo, no watermark, no border or picture frame. Edge-to-edge artwork.",
+      "inspected": true,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    },
+    {
+      "file": "public/demo/art/04-watercolour-coast.png",
+      "prompt": "Use case: stylized-concept. Asset type: final ambient wallpaper for Heartbeat, wide 16:9 landscape. A small solitary coastal lighthouse on a low rocky headland at misty dawn, a quiet grey-blue sea with barely visible rolling swells, far gulls as tiny marks and soft layered distance. Delicate artist's watercolor painting on subtly textured paper, nuanced translucent washes and confident fine details, sea-glass blue, soft mineral grey, muted sand. Atmospheric, restful and aesthetic; a cool morning with an expansive calm horizon. The lighthouse is a small subject within central safe composition, not a giant close-up; atmospheric space at edges and quiet lower corners suitable for a clock overlay. Complete edge-to-edge artwork, no paper border, no lettering, no words, no logo, no watermark. Balanced soft exposure, avoid big white blank regions or dazzling highlights.",
+      "inspected": true,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    },
+    {
+      "file": "public/demo/art/05-winter-refuge.png",
+      "prompt": "Use case: stylized-concept. Asset type: Heartbeat ambient wallpaper, cinematic wide16:9 landscape. A modest warm timber cabin seen from across a broad snow-covered clearing at winter blue hour, deep indigo sky and dark pine forest, fine softly falling snow. The cabin is small in the scene and sits within the central safe crop; its windows give a restrained amber glow. A tiny wreath and a few subdued warm fairy lights suggest Christmas approaching, tasteful and sparse, never a commercial festive display. Exquisite painterly storybook realism, detailed snow and timber, quiet, intimate and comforting. Most of the image remains cool dark blue with just a small warm refuge, no glaring white snow or bright foreground. Generous negative atmosphere and quiet lower corners for UI overlay. Complete edge-to-edge artwork, no writing, no logos, no watermark, no border, no frame. Avoid giant Christmas trees, saturated red-green palette, excessive decorations or large close-up people.",
+      "inspected": true,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    }
+  ]
+}

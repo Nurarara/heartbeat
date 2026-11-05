@@ -1,0 +1,74 @@
+name: Qualified release
+run-name: Qualified ${{ inputs.environment }} release ${{ inputs.revision }}
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        required: true
+      revision:
+        description: Exact reviewed commit SHA (use the same SHA tested on staging)
+        type: string
+        required: true
+      staging_run_id:
+        description: Production only - successful staging release run ID for the same SHA
+        type: string
+        required: false
+      staging_acceptance_confirmed:
+        description: Production only - hosted acceptance, backup and rollback checks are recorded
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+  deployments: read
+concurrency:
+  group: release-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  release:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - run: node scripts/release-preflight.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_REVISION: ${{ inputs.revision }}
+          HEARTBEAT_DEPLOYMENT_ENV: ${{ inputs.environment }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+          STAGING_ACCEPTANCE_CONFIRMED: ${{ inputs.staging_acceptance_confirmed }}
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.25.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/release-config.mjs "$HEARTBEAT_DEPLOYMENT_ENV"
+        env:
+          HEARTBEAT_DEPLOYMENT_ENV: ${{ inputs.environment }}
+      - run: pnpm run check:secrets && pnpm exec tsc --noEmit && pnpm run test:architecture && pnpm run test:product && pnpm run test:ai && pnpm run test:creative && pnpm run test:ambient
+      - run: pnpm run build
+        env:
+          HEARTBEAT_DEPLOYMENT_ENV: ${{ inputs.environment }}
+      - run: node scripts/release.mjs
+        env:
+          HEARTBEAT_DEPLOYMENT_ENV: ${{ inputs.environment }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.DEPLOY_CLOUDFLARE_TOKEN }}
+          HEARTBEAT_RUNTIME_AI_TOKEN: ${{ secrets.RUNTIME_CLOUDFLARE_AI_TOKEN }}
+          HEARTBEAT_WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+          HEARTBEAT_EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+          HEARTBEAT_EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          HEARTBEAT_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          HEARTBEAT_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          HEARTBEAT_OPERATOR_KEY: ${{ secrets.OPERATOR_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_STUDIO_PRICE_ID: ${{ vars.STRIPE_STUDIO_PRICE_ID }}
+          STRIPE_ATELIER_PRICE_ID: ${{ vars.STRIPE_ATELIER_PRICE_ID }}
