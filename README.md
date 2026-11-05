@@ -6,6 +6,8 @@
 
 Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the current system design](docs/system-design.md) for architecture diagrams, payment-to-access flow and credential locations; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
 
+**Hosting update — 5 November 2026:** The [prepared artwork preview](https://heartbeat-art-preview.nurarara.chatgpt.site/) is public; the full app is not. A separate Cloudflare staging database and R2 bucket now exist, and all 15 database migrations were applied and checked. A limited hosted test found that the existing password-hashing fallback sometimes exceeded free Worker resource limits; hosted weather, Google redirects, email and the full application journey still need setup and verification. R2 free allowances do not automatically prevent overage charges. Details are in the [operator setup guide](docs/launch-setup.md).
+
 The [architecture implementation record](docs/architecture-changes.md) maps all 20 review requirements to source changes, remaining scope and release acceptance. The [operator setup guide](docs/launch-setup.md) gives the concrete email, Stripe and hosted-staging steps; `npm run setup:check` reports local configuration presence without printing values or calling providers. Configuration presence does not establish successful real-service testing.
 
 ## Start locally
