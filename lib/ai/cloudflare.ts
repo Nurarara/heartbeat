@@ -17,7 +17,7 @@ function modelPath(model: string) {
   if (!/^@(cf|hf)\/[a-zA-Z0-9_./-]{1,140}$/.test(model) || model.split('/').includes('..')) throw new ProviderFailure('configuration', false);
   return model;
 }
-async function boundedJson(response: Response, maximum: number): Promise<Record<string, unknown>> {
+export async function boundedJson(response: Response, maximum: number): Promise<Record<string, unknown>> {
   const reader = response.body?.getReader();
   if (!reader) throw new ProviderFailure('invalid-output', false);
   const chunks: Uint8Array[] = []; let length = 0;
@@ -36,7 +36,7 @@ async function boundedJson(response: Response, maximum: number): Promise<Record<
   } catch (error) { if (error instanceof ProviderFailure) throw error; throw new ProviderFailure('invalid-output', false); }
   finally { reader.releaseLock(); }
 }
-function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
+export function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
   if (bytes.length < 20 || bytes[0] !== 255 || bytes[1] !== 216 || bytes.at(-2) !== 255 || bytes.at(-1) !== 217) throw new ProviderFailure('invalid-output', false);
   let at = 2;
   while (at + 4 < bytes.length) {

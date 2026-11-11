@@ -123,5 +123,19 @@ try {
   // New cookie/login and browser history reset cannot reset the durable ledger.
   const third = await login();
   assert.equal((await (await call('status', { cookie: third })).json()).used, 2);
+  // Kie paints when selected; the Cloudflare director still decides what to paint.
+  {
+    let kieCalls = 0, kieConfig;
+    const kieEnv = { ...env, HEARTBEAT_IMAGE_PROVIDER: 'kie', KIE_API_KEY: 'fake-kie-key', HEARTBEAT_KIE_MODEL: 'seedream/5-5-text-to-image' };
+    assert.equal((await (await aiService({ ...kieEnv, KIE_API_KEY: '' }).handle(new Request('http://localhost/api/ai/status'))).json()).configured, false, 'Kie needs its own key');
+    assert.equal((await (await aiService({ ...kieEnv, HEARTBEAT_KIE_MODEL: 'unknown-model' }).handle(new Request('http://localhost/api/ai/status'))).json()).configured, false, 'Only tested Kie models are accepted');
+    const kieService = aiService(kieEnv, { now: () => at, context: async () => weather(), provider: () => ({ direct: async packet => ({ action: 'REIMAGINE', title: 'Kie night', reason: 'Testing the Kie painter.', prompt: 'A quiet dark coast.', lighting: 'dark', themeIds: packet.inspiration[0].themes.map(theme => theme.id) }), generate: async () => { throw new Error('Cloudflare must not paint when Kie is selected'); } }), kie: config => { kieConfig = config; return { generate: async () => { kieCalls++; return { bytes: new Uint8Array([255, 216, 77, 255, 217]), mime: 'image/jpeg', width: 1024, height: 576 }; } }; } });
+    at += 86400000;
+    const kieLogin = await kieService.handle(new Request(`${env.HEARTBEAT_APP_ORIGIN}/api/ai/session`, { method: 'POST', headers: { Origin: env.HEARTBEAT_APP_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ accessKey: env.HEARTBEAT_AI_ACCESS_KEY }) }));
+    const kieCookie = kieLogin.headers.get('set-cookie').split(';')[0];
+    const painted = await (await kieService.handle(new Request(`${env.HEARTBEAT_APP_ORIGIN}/api/ai/prepare`, { method: 'POST', headers: { Cookie: kieCookie, Origin: env.HEARTBEAT_APP_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify(data()) }))).json();
+    assert.equal(painted.status, 'ready'); assert.equal(kieCalls, 1);
+    assert.deepEqual(kieConfig, { apiKey: 'fake-kie-key', model: 'seedream/5-5-text-to-image' });
+  }
   console.log('Passed real-SQLite AI service: concurrent reservation, shared cap, replay, failed/HOLD accounting, private images, signed sessions, display ACK ordering, duplicate image rejection, midnight reset and night-light guard. Provider/R2 mocked; no paid calls.');
 } finally { sqlite.close(); }

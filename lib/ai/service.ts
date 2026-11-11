@@ -1,4 +1,5 @@
 import { cloudflareProvider, ProviderFailure } from './cloudflare.ts';
+import { kieImageProvider, KIE_MODELS } from './kie.ts';
 import { contextPlace, collectContext } from '../context.ts';
 import { parseStoryMemory, planMoment } from '../ambient-director.ts';
 import { creativePacket, type CreativeProposal } from '../creative.ts';
@@ -14,11 +15,13 @@ export type AIEnvironment = {
   CLOUDFLARE_ACCOUNT_ID?: string; CLOUDFLARE_API_TOKEN?: string; HEARTBEAT_AI_ACCESS_KEY?: string;
   HEARTBEAT_APP_ORIGIN?: string; HEARTBEAT_AI_DAILY_LIMIT?: string;
   HEARTBEAT_DIRECTOR_MODEL?: string; HEARTBEAT_IMAGE_MODEL?: string;
+  /** `cloudflare` (default) or `kie`. The director always runs on Cloudflare. */
+  HEARTBEAT_IMAGE_PROVIDER?: string; KIE_API_KEY?: string; HEARTBEAT_KIE_MODEL?: string;
   HEARTBEAT_APP_MODE?: string;
 };
 type Attempt = { id: string; owner: string; request_id: string; claim: string; day: string; status: string; location_key: string; created_at: number; candidate: string | null; art_key: string | null; error: string | null };
 type Session = { id: string; expires: number; claim: string | null; lease_until: number; next_at: number; current_id: string | null; current_at: number; account?: AccountAccess };
-type Dependencies = { now?: () => number; provider?: typeof cloudflareProvider; context?: (place: Place) => Promise<Context>; account?: (request:Request) => Promise<AccountAccess|null> };
+type Dependencies = { now?: () => number; provider?: typeof cloudflareProvider; kie?: typeof kieImageProvider; context?: (place: Place) => Promise<Context>; account?: (request:Request) => Promise<AccountAccess|null> };
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const COOLDOWN = 600000, LEASE = 240000;
 const response = (data: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store', ...headers } });
@@ -49,9 +52,11 @@ async function body(request: Request, maximum: number): Promise<Record<string, u
 }
 
 export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
-  const now = dependencies.now || Date.now, providerFactory = dependencies.provider || cloudflareProvider, observe = dependencies.context || collectContext;
+  const now = dependencies.now || Date.now, providerFactory = dependencies.provider || cloudflareProvider, kieFactory = dependencies.kie || kieImageProvider, observe = dependencies.context || collectContext;
   const limit = Math.max(1, Math.min(env.HEARTBEAT_APP_MODE ? 100000 : 24, Number.parseInt(env.HEARTBEAT_AI_DAILY_LIMIT || '8', 10) || 8));
-  const configured = env.HEARTBEAT_AI_ENABLED === 'true' && !!env.DB && !!env.BUCKET && /^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '') && !!env.CLOUDFLARE_API_TOKEN && (!!env.HEARTBEAT_APP_MODE || (env.HEARTBEAT_AI_ACCESS_KEY?.length || 0) >= 32);
+  const useKie = env.HEARTBEAT_IMAGE_PROVIDER === 'kie';
+  const imagesConfigured = !env.HEARTBEAT_IMAGE_PROVIDER || env.HEARTBEAT_IMAGE_PROVIDER === 'cloudflare' || useKie && !!env.KIE_API_KEY && (!env.HEARTBEAT_KIE_MODEL || env.HEARTBEAT_KIE_MODEL in KIE_MODELS);
+  const configured = env.HEARTBEAT_AI_ENABLED === 'true' && !!env.DB && !!env.BUCKET && /^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '') && !!env.CLOUDFLARE_API_TOKEN && imagesConfigured && (!!env.HEARTBEAT_APP_MODE || (env.HEARTBEAT_AI_ACCESS_KEY?.length || 0) >= 32);
   const database = () => { if (!env.DB) throw new RequestFailure('AI storage is not configured.', 503); return env.DB; };
   function origin(request: Request) {
     const url = new URL(request.url);
@@ -168,6 +173,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         const baseline = planMoment(place, context, at, memory, id.charCodeAt(0) + at, { force: true, festive: input.festive === true }).direction;
         const packet = creativePacket({ phase: baseline.phase, season: baseline.season, temperature: baseline.brief.temperature, weekday: baseline.brief.weekday, festive: baseline.recipe.festive, localDate: baseline.recipe.date, localTime: localClock(place, at).time, weather: weatherCue(context, at), preferredStyle: ['anime','watercolour','cinematic','pencil','photographic'].includes(String(input.style))?String(input.style):undefined }, memory?.creative, at, at, memory?.history.map(item => item.direction.scene) || [], memory?.history.map(item => ({ title: item.direction.artwork?.title || item.direction.scene, summary: item.direction.artwork?.proposal.prompt || item.direction.brief.activity, phase: item.direction.phase })) || []);
         const provider = providerFactory({ accountId: env.CLOUDFLARE_ACCOUNT_ID!, apiToken: env.CLOUDFLARE_API_TOKEN!, directorModel: env.HEARTBEAT_DIRECTOR_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast', imageModel: env.HEARTBEAT_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell' });
+        const painter = useKie ? kieFactory({ apiKey: env.KIE_API_KEY!, model: env.HEARTBEAT_KIE_MODEL }) : provider;
         await database().prepare("UPDATE ai_attempts SET status = 'directing' WHERE id = ? AND claim = ?").bind(id, claim).run();
         const signal = AbortSignal.timeout(180000);
         const directed = await provider.direct(packet, { signal, mustReimagine: input.force === true || !memory?.history.length || baseline.phase === 'night' && memory.history.at(-1)?.direction.phase !== 'night' });
@@ -178,7 +184,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
           return response({ status: 'held', nextAt: startedAt + 3600000 });
         }
         await database().prepare("UPDATE ai_attempts SET status = 'generating' WHERE id = ? AND claim = ?").bind(id, claim).run();
-        const image = await provider.generate(directed, packet, signal);
+        const image = await painter.generate(directed, packet, signal);
         if (now() - startedAt >= LEASE || signal.aborted) throw new Error('Preparation lease expired.');
         const imageHash = b64(new Uint8Array(await crypto.subtle.digest('SHA-256', image.bytes as BufferSource)));
         const repeated = await database().prepare("SELECT id FROM ai_attempts WHERE owner = ? AND image_hash = ? AND status IN ('ready','displayed') LIMIT 1").bind(session.id, imageHash).first();
