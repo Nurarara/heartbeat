@@ -14,6 +14,7 @@
     "setup:check": "node scripts/setup-status.mjs",
     "demo:prepare": "node scripts/prepare-demo-art.mjs",
     "demo:share-preview": "node --experimental-strip-types scripts/preview-share-demo.mjs",
+    "demo:export": "node --experimental-strip-types scripts/preview-share-demo.mjs --export",
     "test:product:live": "node tests/live-product.mjs",
     "ai:smoke": "node scripts/smoke-ai.mjs",
     "ai:prepare": "node scripts/prepare-ai.mjs",
