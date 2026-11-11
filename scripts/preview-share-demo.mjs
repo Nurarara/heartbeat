@@ -12,7 +12,7 @@ const headers={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer
 export async function createDemoPreview(){
  const bundle=await build({entryPoints:[path.join(root,'components/shareable-demo.tsx')],bundle:true,platform:'browser',format:'esm',target:'es2022',outfile:path.join(root,'.sites-runtime/demo-share/demo.js'),write:false,minify:true,define:{'process.env.NODE_ENV':'"production"'},tsconfig:path.join(root,'tsconfig.json'),logLevel:'silent'});
  const js=bundle.outputFiles.find(file=>file.path.endsWith('.js')),css=bundle.outputFiles.find(file=>file.path.endsWith('.css'));
- if(!js||!css||DEMO_SCENES.length!==10)throw new Error('Could not prepare the isolated demo assets.');
+ if(!js||!css||DEMO_SCENES.length!==15)throw new Error('Could not prepare the isolated demo assets.');
  const files=new Map([['/',{type:'text/html; charset=utf-8',bytes:Buffer.from(html)}],['/demo.js',{type:'text/javascript; charset=utf-8',bytes:js.contents}],['/demo.css',{type:'text/css; charset=utf-8',bytes:Buffer.concat([Buffer.from('@font-face{font-family:Manrope;src:url(/fonts/manrope.ttf) format("truetype");font-display:swap}html,body{margin:0;padding:0}\n'),css.contents])}],['/fonts/manrope.ttf',{type:'font/ttf',bytes:await readFile(path.join(root,'public/fonts/manrope.ttf'))}]]);
  for(const scene of DEMO_SCENES){if(!/^\/demo\/art\/[a-z0-9-]+\.webp$/.test(scene.image)||files.has(scene.image))throw new Error('Invalid demo artwork manifest.');files.set(scene.image,{type:'image/webp',bytes:await readFile(path.join(root,'public',scene.image.slice(1)))});}
  return createServer((request,response)=>{

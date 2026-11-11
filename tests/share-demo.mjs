@@ -15,5 +15,5 @@ try{
  for(const forbidden of ['/auth','/api/product/auth/session','/api/product/generation','/api/ai/status','/.dev.vars','/%2e%2e/.dev.vars','/demo/art/not-in-manifest.webp'])assert.equal((await fetch(origin+forbidden)).status,404,forbidden);
  const post=await fetch(origin+'/api/product/generation',{method:'POST'});assert.equal(post.status,405);assert.equal(post.headers.get('allow'),'GET, HEAD');
  const head=await fetch(origin+'/demo.js',{method:'HEAD'});assert.equal(head.status,200);assert.equal((await head.arrayBuffer()).byteLength,0);
- console.log('Passed isolated demo allowlist, all ten artwork assets, no account/AI/private-file routes, read-only methods and no outbound connections.');
+ console.log('Passed isolated demo allowlist, all fifteen artwork assets, no account/AI/private-file routes, read-only methods and no outbound connections.');
 }finally{server.close();await once(server,'close');}
