@@ -1,4 +1,8 @@
 import type { Context, Place } from "./world";
+/** Free direct-provider fallback belongs only to the explicit local study. */
+export function localWeatherFallbackAllowed(customer:boolean,address:{protocol:string;hostname:string}):boolean {
+  return !customer&&address.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(address.hostname);
+}
 export function contextPlace(params: URLSearchParams): Place | null {
   if (!["latitude", "longitude", "timezone"].some(key => params.has(key))) return null;
   const lat = params.get("latitude"), lon = params.get("longitude"), timezone = params.get("timezone");

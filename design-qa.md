@@ -1,6 +1,26 @@
 # Heartbeat design QA
 
-final result: blocked
+current result: browser checks passed for the new demo/onboarding; full visual/device qualification remains open
+
+## 28 October standalone demo preview
+
+The demo-only local preview reuses the approved artwork player and typography, replaces the recording-specific introduction with an honest prepared-scenes explanation, and removes account links that do not exist in the isolated preview. Actual Chrome captures at 1440 × 900, 768 × 1024 and 390 × 844 showed no horizontal overflow, broken images or dead links; the player advanced from scene one to scene two after ten seconds with no API calls or reported console errors. The mobile intro was visually inspected. On 5 November the same viewport and playback checks passed against the separately published public static Site; no physical device was tested. The automated inspector passed with the existing immersive title and palette exceptions, and warned that much secondary text is under 13px. Evidence is in ignored `outputs/share-preview-qa`, `outputs/hosted-share-preview-qa` and `outputs/share-preview-inspection`.
+
+## 27 October browser inspection
+
+Browser access is now available through an isolated real Chrome/CDP session. The new `/demo` intro and city/style/ready onboarding were captured at 1440 × 900, 768 × 1024 and 390 × 844. The player was also checked in ultrawide and 4K browser windows. Reports found no horizontal overflow or broken images across 18 views, no reported console errors, real fullscreen entry and real ten-second image progression. Demo playback made zero API calls. Customer generation/geocoding were intercepted for this visual run; a separate live provider test exists in `docs/architecture-validation.md`.
+
+The demo intro's automated design inspection reports zero findings at desktop/tablet/phone widths. Explicit exceptions preserve Heartbeat's approved ivory artwork palette and the oversized title of this immersive entry screen; they are not exceptions for controls or forms. Screenshots were physically inspected. Revisions reduced the heading to two lines, retained Manrope instead of a serif fallback, improved image scrim legibility, kept touch transport targets at 44 px, and removed an inappropriate visible heading-focus outline while preserving control focus states. Onboarding resets scroll and focuses each new step before paint.
+
+The player capture harness initially showed a 44-pixel top shift and bottom band after mixing fullscreen with emulated viewport changes. Fresh-page windowed captures at 1440/390 are correct, with root bounds equal to the viewport, zero scroll/visual-viewport offsets and intact headers. A separate fresh page entered/exited actual fullscreen successfully. This was a capture artifact; no compensating CSS offset was added. Local screenshots/reports are under ignored `outputs/customer-journey-browser`, `outputs/design-demo-final` and `outputs/demo-windowed-qa`.
+
+The reviewed new screens share the approved navy/ivory/Manrope brand, give the artwork most of the screen, keep one clear step/action at a time and identify prepared/illustrative content. The desktop demo and mobile onboarding are coherent with that direction. A further real-browser review of landing/pricing/registration found the new demo link touching the primary landing invitation. Scoped flex placement and spacing fixed it; fresh 1440/390/320 captures were inspected, with separate actions, clear nav/heading/rail and no horizontal overflow. Narrow sign-in navigation is kept on one line. Evidence is in ignored `outputs/landing-final-qa`.
+
+The built-preview check also caught incompatible client-side routing when leaving the isolated recording player. Its exit/sign-up links now use full-document navigation, which discards playback/fullscreen state and matches the established application navigation. The scoped lint exception records that intent; correctness is checked in the built browser, separately from simulated DOM tests.
+
+This is a bounded screenshot/interaction review, not a claim of pixel fidelity to either reference website or a completed accessibility/performance audit. The existing studio and physical devices still need broader acceptance, as do keyboard/screen-reader review, night comfort and battery measurements.
+
+## Historical browser-access limitation
 
 ## Target
 

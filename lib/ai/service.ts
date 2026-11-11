@@ -1,8 +1,9 @@
+import {acknowledgeDisplay} from '../product/profiles.ts';
 import { cloudflareProvider, ProviderFailure } from './cloudflare.ts';
 import { kieImageProvider, KIE_MODELS } from './kie.ts';
 import { contextPlace, collectContext } from '../context.ts';
 import { parseStoryMemory, planMoment } from '../ambient-director.ts';
-import { creativePacket, type CreativeProposal } from '../creative.ts';
+import { creativePacket, directorFingerprint, type CreativeProposal } from '../creative.ts';
 import { THEME_LIBRARY } from '../creative-library.ts';
 import type { Context, Place } from '../world.ts';
 import type { AICandidate, AIResult } from './types.ts';
@@ -71,11 +72,10 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
   async function owner(request: Request): Promise<Session | null> {
     const account = await (dependencies.account ? dependencies.account(request) : accountAccess(request,env,now()));
     if(account) {
-      await database().prepare('INSERT INTO ai_sessions(id,expires) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET expires=MAX(expires,excluded.expires)').bind(account.userId,account.expires).run();
       const stored=await database().prepare('SELECT * FROM ai_sessions WHERE id=?').bind(account.userId).first<Session>();
-      return stored ? {...stored,account} : null;
+      return stored ? {...stored,expires:account.expires,account} : {id:account.userId,expires:account.expires,claim:null,lease_until:0,next_at:0,current_id:null,current_at:0,account};
     }
-    if(env.HEARTBEAT_APP_MODE==='production') return null;
+    if(env.HEARTBEAT_APP_MODE && !(env.HEARTBEAT_APP_MODE==='development' && ['localhost','127.0.0.1','[::1]'].includes(new URL(request.url).hostname) && new URL(request.url).protocol==='http:')) return null;
     const raw = request.headers.get('cookie')?.match(/(?:^|;\s*)heartbeat_ai=([^;]+)/)?.[1] || '';
     const [id, expiry, signed] = raw.split('.');
     if (!UUID.test(id || '') || !/^\d{13}$/.test(expiry || '') || !signed || !env.HEARTBEAT_AI_ACCESS_KEY) return null;
@@ -106,7 +106,8 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         if(session.account) { const a=session.account; return response({configured:true,authorized:true,available:a.eligible&&used<limit,reason:!a.eligible?a.reason:used>=limit?'Daily generation capacity is used. New AI pictures resume after the reset; existing artwork stays available.':a.reason,dailyLimit:a.allowance,used:a.used,remaining:Math.max(0,Math.min(a.allowance-a.used,limit-used)),nextAt:session.next_at,plan:a.plan,account:true,...(a.eligible&&capacityResetAt?{capacityResetAt}:{})}); }
         return response({ configured: true, authorized: true, available: used < limit, reason: used >= limit ? 'Today’s shared attempt allowance is used. Current artwork is kept.' : 'AI is connected for this browser.', dailyLimit: limit, used, remaining: Math.max(0, limit - used), nextAt: session.next_at });
       }
-      if (!configured) return response({ error: 'AI setup is not complete. Free artwork is available.' }, 503);
+      const delivery=request.method==='GET'&&(path.startsWith('art/')||path==='attempt')||request.method==='POST'&&path==='display';
+      if (!configured&&!delivery) return response({ error: 'AI setup is not complete. Free artwork is available.' }, 503);
       if (request.method !== 'GET') origin(request);
       if (path === 'session' && request.method === 'POST') {
         if(env.HEARTBEAT_APP_MODE==='production'||!env.HEARTBEAT_AI_ACCESS_KEY) throw new RequestFailure('Sign in with your Heartbeat account.',403);
@@ -125,6 +126,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         const id = path.slice(4); if (!UUID.test(id)) throw new RequestFailure('Artwork not found.', 404);
         const attempt = await database().prepare("SELECT * FROM ai_attempts WHERE id = ? AND owner = ? AND status IN ('ready', 'displayed')").bind(id, session.id).first<Attempt>();
         if (!attempt?.art_key) throw new RequestFailure('Artwork not found.', 404);
+        if (session.account && !await database().prepare("SELECT id FROM hb_assets WHERE id=? AND owner=? AND art_key=? AND state='ready'").bind(id, session.id, attempt.art_key).first()) throw new RequestFailure('Artwork not found.', 404);
         const object = await env.BUCKET!.get(attempt.art_key); if (!object) throw new RequestFailure('Artwork not found.', 404);
         return new Response(object.body, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
       }
@@ -134,6 +136,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         if (!attempt) throw new RequestFailure('Attempt not found.', 404);
         return response(result(attempt, session));
       }
+      if (path === 'display' && request.method === 'POST' && session.account) return response(await acknowledgeDisplay(env,session.id,await body(request,2048),now()));
       if (path === 'display' && request.method === 'POST') {
         const input = await body(request, 512); if (typeof input.id !== 'string' || !UUID.test(input.id)) throw new RequestFailure('Invalid artwork ID.');
         await database().batch([
@@ -145,6 +148,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         return response({ displayed: true });
       }
       if (path !== 'prepare' || request.method !== 'POST') throw new RequestFailure('Not found.', 404);
+      if(env.HEARTBEAT_APP_MODE)throw new RequestFailure('Use account background generation.',403);
       const input = await body(request, 160000);
       if (typeof input.requestId !== 'string' || !UUID.test(input.requestId) || !input.location || typeof input.location !== 'object') throw new RequestFailure('Choose a city and retry.');
       const location = input.location as Record<string, unknown>;
@@ -190,8 +194,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         const repeated = await database().prepare("SELECT id FROM ai_attempts WHERE owner = ? AND image_hash = ? AND status IN ('ready','displayed') LIMIT 1").bind(session.id, imageHash).first();
         if (repeated) throw new Error('Duplicate image rejected.');
         const themes = directed.themeIds.map(themeId => THEME_LIBRARY.find(theme => theme.id === themeId)!);
-        const invented = [...new Set(`${directed.title} ${directed.prompt}`.toLowerCase().match(/[a-z]{4,}/g) || [])].sort().slice(0, 18).join('-').slice(0, 320);
-        const fingerprint = ['place', 'subject', 'activity', 'viewpoint'].flatMap(category => themes.filter(theme => theme.category === category).map(theme => theme.id).sort()).join('|') || `invented-${invented || id}`;
+        const fingerprint = directorFingerprint(themes, directed.prompt);
         const proposal: CreativeProposal = { ...packet.inspiration[0], source: 'ai-director', id: `idea-${id}`, fingerprint, title: directed.title, prompt: directed.prompt, themes: themes.map(({ id: themeId, label, category }) => ({ id: themeId, label, category })), lighting: directed.lighting };
         const artKey = `heartbeat-ai/${session.id}/${id}.jpg`;
         const candidate: AICandidate = { id, requestId: input.requestId, locationKey: keyOf(place), createdAt: at, direction: { ...baseline, id: `generated-${id}`, reason: directed.reason, artwork: { attemptId: id, url: `/api/ai/art/${id}`, title: directed.title, proposal } } };
