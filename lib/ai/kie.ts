@@ -17,6 +17,8 @@ export const KIE_MODELS: Record<string, ModelSpec> = {
   'seedream/5-5-text-to-image': { promptLimit: 5000, input: prompt => ({ prompt, aspect_ratio: '16:9', size: '1K', output_format: 'jpeg' }) },
 };
 export const DEFAULT_KIE_MODEL = 'z-image';
+/** True when Kie can paint: a key is present and the model is one of the tested ones. */
+export const kieConfigured = (env: { KIE_API_KEY?: string; HEARTBEAT_KIE_MODEL?: string }) => !!env.KIE_API_KEY?.trim() && (!env.HEARTBEAT_KIE_MODEL || Object.hasOwn(KIE_MODELS, env.HEARTBEAT_KIE_MODEL));
 
 type Config = { apiKey: string; model?: string };
 type Options = { sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; pollMs?: number; deadlineMs?: number; now?: () => number };

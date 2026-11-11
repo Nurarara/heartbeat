@@ -1,6 +1,6 @@
 import {acknowledgeDisplay} from '../product/profiles.ts';
 import { cloudflareProvider, ProviderFailure } from './cloudflare.ts';
-import { kieImageProvider, KIE_MODELS } from './kie.ts';
+import { kieImageProvider, kieConfigured } from './kie.ts';
 import { contextPlace, collectContext } from '../context.ts';
 import { parseStoryMemory, planMoment } from '../ambient-director.ts';
 import { creativePacket, directorFingerprint, type CreativeProposal } from '../creative.ts';
@@ -56,7 +56,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
   const now = dependencies.now || Date.now, providerFactory = dependencies.provider || cloudflareProvider, kieFactory = dependencies.kie || kieImageProvider, observe = dependencies.context || collectContext;
   const limit = Math.max(1, Math.min(env.HEARTBEAT_APP_MODE ? 100000 : 24, Number.parseInt(env.HEARTBEAT_AI_DAILY_LIMIT || '8', 10) || 8));
   const useKie = env.HEARTBEAT_IMAGE_PROVIDER === 'kie';
-  const imagesConfigured = !env.HEARTBEAT_IMAGE_PROVIDER || env.HEARTBEAT_IMAGE_PROVIDER === 'cloudflare' || useKie && !!env.KIE_API_KEY && (!env.HEARTBEAT_KIE_MODEL || env.HEARTBEAT_KIE_MODEL in KIE_MODELS);
+  const imagesConfigured = !env.HEARTBEAT_IMAGE_PROVIDER || env.HEARTBEAT_IMAGE_PROVIDER === 'cloudflare' || useKie && kieConfigured(env);
   const configured = env.HEARTBEAT_AI_ENABLED === 'true' && !!env.DB && !!env.BUCKET && /^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '') && !!env.CLOUDFLARE_API_TOKEN && imagesConfigured && (!!env.HEARTBEAT_APP_MODE || (env.HEARTBEAT_AI_ACCESS_KEY?.length || 0) >= 32);
   const database = () => { if (!env.DB) throw new RequestFailure('AI storage is not configured.', 503); return env.DB; };
   function origin(request: Request) {

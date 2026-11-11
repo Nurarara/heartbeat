@@ -19,7 +19,7 @@
     "ai:prepare": "node scripts/prepare-ai.mjs",
     "test:ai": "node --experimental-strip-types tests/ai-service.mjs && node --experimental-strip-types tests/ai-playback.mjs && node tests/ai-connection.mjs",
     "creative:evaluate": "node --experimental-strip-types scripts/evaluate-creative.mjs",
-    "test:creative": "node --experimental-strip-types tests/creative.mjs && node --experimental-strip-types tests/cloudflare-provider.mjs && node --experimental-strip-types tests/kie-provider.mjs",
+    "test:creative": "node --experimental-strip-types tests/creative.mjs && node --experimental-strip-types tests/cloudflare-provider.mjs && node --experimental-strip-types tests/kie-provider.mjs && node --experimental-strip-types tests/kie-jobs.mjs",
     "test:soak": "node --experimental-strip-types tests/ambient-soak.mjs",
     "test:live": "node tests/live-server.mjs",
     "test:ambient": "node --experimental-strip-types tests/ambient.mjs && node --experimental-strip-types tests/context.mjs && node --experimental-strip-types tests/ambient-director.mjs && node tests/live-heartbeat.mjs && node tests/ambient-playback.mjs",

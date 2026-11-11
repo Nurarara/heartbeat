@@ -4,6 +4,7 @@ import type {User} from './auth.ts';
 import type {AccountAccess} from './access.ts';
 import {resolveArtworkInput} from './profiles.ts';
 import {cloudflareProvider,ProviderFailure} from '../ai/cloudflare.ts';
+import {kieImageProvider,kieConfigured,DEFAULT_KIE_MODEL} from '../ai/kie.ts';
 import {createWeatherAdapter,WeatherUnavailableError} from '../server/weather.ts';
 import {planMoment,parseStoryMemory} from '../ambient-director.ts';
 import {creativePacket,directorFingerprint,type CreativeProposal} from '../creative.ts';
@@ -17,12 +18,12 @@ import {reserveUsage,settleUsage,reserveOperatingAttempt,reserveProviderOperatio
 
 export type JobEnv=ProductEnv;
 type Job={id:string;owner:string;owner_epoch:number;request_id:string;input:string;input_hash:string;status:string;error_category:string|null;result:string|null;created_at:number;updated_at:number;stage_version:number;lease:string|null;lease_until:number;context:string|null;direction:string|null;world_id:string|null;surface_id:string|null;deadline:number};
-type Dependencies={now?:()=>number;provider?:typeof cloudflareProvider;context?:(place:Place)=>Promise<Context>;fault?:(boundary:string)=>void|Promise<void>};
+type Dependencies={now?:()=>number;provider?:typeof cloudflareProvider;kie?:typeof kieImageProvider;context?:(place:Place)=>Promise<Context>;fault?:(boundary:string)=>void|Promise<void>};
 const terminal=new Set(['ready','done','held','failed','canceled','outcome_unknown']);
 class InjectedCrash extends Error {constructor(error:unknown){super(error instanceof Error?error.message:'Injected interruption');this.name='InjectedCrash';}}
 class LeaseLost extends Error {}
 async function boundary(deps:Dependencies,name:string){try{await deps.fault?.(name);}catch(error){throw new InjectedCrash(error);}}
-const providerModels=(env:JobEnv)=>({director:env.HEARTBEAT_DIRECTOR_MODEL||'@cf/meta/llama-3.3-70b-instruct-fp8-fast',image:env.HEARTBEAT_IMAGE_MODEL||'@cf/black-forest-labs/flux-1-schnell'});
+const providerModels=(env:JobEnv)=>({director:env.HEARTBEAT_DIRECTOR_MODEL||'@cf/meta/llama-3.3-70b-instruct-fp8-fast',image:env.HEARTBEAT_IMAGE_PROVIDER==='kie'?`kie:${env.HEARTBEAT_KIE_MODEL||DEFAULT_KIE_MODEL}`:env.HEARTBEAT_IMAGE_MODEL||'@cf/black-forest-labs/flux-1-schnell'});
 function localJobDevelopment(env:JobEnv){try{const origin=new URL(env.HEARTBEAT_APP_ORIGIN||'');return env.HEARTBEAT_APP_MODE==='development'&&origin.protocol==='http:'&&!origin.username&&!origin.password&&['localhost','127.0.0.1','[::1]'].includes(origin.hostname);}catch{return false;}}
 function result(job:Job,now:number){if(job.result)return JSON.parse(job.result);if(job.status==='outcome_unknown')return {status:'failed',jobState:'outcome_unknown',jobId:job.id,requestId:job.request_id,reason:'The provider outcome needs reconciliation. This request will not be submitted again automatically.'};const retryAfter=Math.min(30,5*2**Math.min(3,Math.floor(Math.max(0,now-job.updated_at)/60000)));return {status:'pending',jobState:job.status,jobId:job.id,requestId:job.request_id,nextAt:now+retryAfter*1000,retryAfter};}
 async function readJob(env:JobEnv,id:string){return db(env).prepare('SELECT * FROM hb_jobs WHERE id=?').bind(id).first<Job>();}
@@ -31,7 +32,7 @@ export async function acceptArtworkRequest(env:JobEnv,user:User,input:Record<str
  const prior=await db(env).prepare('SELECT * FROM hb_jobs WHERE owner=? AND request_id=?').bind(user.id,input.requestId).first<Job>();
  if(prior){const old=JSON.parse(prior.input);if((input.worldId!==undefined&&input.worldId!==prior.world_id)||(input.surfaceId!==undefined&&input.surfaceId!==prior.surface_id)||old.force!==(input.force===true))throw new ProductError('This request key was used for different input.',409);await dispatchArtworkOutbox(env,now,4);return prior;}
  const normalized=await resolveArtworkInput(env,user.id,input,now),body=JSON.stringify({...normalized,force:input.force===true}),fingerprint=await hash(body);
- if(env.HEARTBEAT_AI_ENABLED!=='true'||!env.CLOUDFLARE_API_TOKEN||!env.CLOUDFLARE_ACCOUNT_ID||!env.BUCKET)throw new ProductError('AI setup is not complete. Your current artwork stays.',503);
+ if(env.HEARTBEAT_AI_ENABLED!=='true'||!env.CLOUDFLARE_API_TOKEN||!env.CLOUDFLARE_ACCOUNT_ID||!env.BUCKET||env.HEARTBEAT_IMAGE_PROVIDER==='kie'&&!kieConfigured(env))throw new ProductError('AI setup is not complete. Your current artwork stays.',503);
  if(!env.ARTWORK_WORKFLOW)throw new ProductError('Background generation is not configured.',503);
  const a=await accessFor({user,expires:now+86400000},env,now,localJobDevelopment(env));if(!a.eligible)throw new ProductError(a.reason,429);
  const id=crypto.randomUUID(),database=db(env);
@@ -155,7 +156,7 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
    else{
     const operation=await database.prepare('SELECT state FROM hb_provider_operations WHERE id=?').bind(`${job.id}:image`).first<{state:string}>();if(operation?.state!=='reserved')throw new Error('unknown_provider_operation');
     await boundary(deps,'before_image_submit');await submitProviderOperation(env,`${job.id}:image`,job.id,claim,job.stage_version,now());
-    await boundary(deps,'before_image');const c=JSON.parse(job.context!),image=await provider().generate(JSON.parse(job.direction!),c.packet,AbortSignal.timeout(180000));await boundary(deps,'after_image');
+    await boundary(deps,'before_image');const c=JSON.parse(job.context!),painter=env.HEARTBEAT_IMAGE_PROVIDER==='kie'?(deps.kie||kieImageProvider)({apiKey:env.KIE_API_KEY!,model:env.HEARTBEAT_KIE_MODEL}):provider(),image=await painter.generate(JSON.parse(job.direction!),c.packet,AbortSignal.timeout(180000));await boundary(deps,'after_image');
     const imageHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',image.bytes as BufferSource)),v=>v.toString(16).padStart(2,'0')).join('');
     if(await database.prepare("SELECT id FROM hb_assets WHERE owner=? AND image_hash=? AND state='ready' AND id!=?").bind(job.owner,imageHash,job.id).first())throw new ProviderFailure('invalid-output',false);
     await assertLease(env,job,claim,now());
