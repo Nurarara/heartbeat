@@ -1,0 +1,30 @@
+{
+  "staging": {
+    "billingEnabled": false,
+    "name": "heartbeat-staging",
+    "origin": "https://staging.example.invalid",
+    "databaseName": "heartbeat-staging",
+    "databaseId": "REPLACE_WITH_STAGING_D1_ID",
+    "bucketName": "heartbeat-staging-art",
+    "workflowName": "heartbeat-staging-artwork",
+    "dailyAttemptLimit": 3,
+    "dailyBudgetMicros": 0,
+    "directorEstimateMicros": 0,
+    "imageEstimateMicros": 0,
+    "providerConcurrency": 2
+  },
+  "production": {
+    "billingEnabled": false,
+    "name": "heartbeat-production",
+    "origin": "https://example.invalid",
+    "databaseName": "heartbeat-production",
+    "databaseId": "REPLACE_WITH_PRODUCTION_D1_ID",
+    "bucketName": "heartbeat-production-art",
+    "workflowName": "heartbeat-production-artwork",
+    "dailyAttemptLimit": 3,
+    "dailyBudgetMicros": 0,
+    "directorEstimateMicros": 0,
+    "imageEstimateMicros": 0,
+    "providerConcurrency": 2
+  }
+}
