@@ -16,13 +16,13 @@ const MAX_ENTRIES=512,FRESH_TTL=300000,STALE_TTL=900000,OBSERVATION_MAX_AGE=5400
 function boundedSet<T>(map:Map<string,T>,key:string,value:T){if(map.size>=MAX_ENTRIES&&!map.has(key))map.delete(map.keys().next().value!);map.set(key,value);}
 function endpoint(env:ProductEnv,kind:'forecast'|'search'){
  const provider=env.HEARTBEAT_WEATHER_PROVIDER||'open-meteo-free';
- if(!['open-meteo-free','open-meteo-commercial'].includes(provider))throw new WeatherConfigurationError('Weather provider is not supported.');
- const commercial=provider==='open-meteo-commercial',hosted=['staging','production'].includes(env.HEARTBEAT_DEPLOYMENT_ENV||'')||env.HEARTBEAT_APP_MODE==='production';
- if(hosted&&(!commercial||!env.HEARTBEAT_WEATHER_API_KEY?.trim()))throw new WeatherConfigurationError('Commercial weather must be configured before hosted use.');
+ if(!['open-meteo-free','open-meteo-commercial','visual-crossing-free'].includes(provider))throw new WeatherConfigurationError('Weather provider is not supported.');
+ const visual=provider==='visual-crossing-free',commercial=provider==='open-meteo-commercial',hosted=['staging','production'].includes(env.HEARTBEAT_DEPLOYMENT_ENV||'')||env.HEARTBEAT_APP_MODE==='production';
+ if(hosted&&!visual&&(!commercial||!env.HEARTBEAT_WEATHER_API_KEY?.trim()))throw new WeatherConfigurationError('Commercial weather must be configured before hosted use.');
  if(commercial&&!env.HEARTBEAT_WEATHER_API_KEY?.trim())throw new WeatherConfigurationError('Commercial weather credentials are missing.');
- const fallback=kind==='forecast'?(commercial?'https://customer-api.open-meteo.com/v1/forecast':'https://api.open-meteo.com/v1/forecast'):(commercial?'https://customer-geocoding-api.open-meteo.com/v1/search':'https://geocoding-api.open-meteo.com/v1/search');
+ const fallback=visual?'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/':kind==='forecast'?(commercial?'https://customer-api.open-meteo.com/v1/forecast':'https://api.open-meteo.com/v1/forecast'):(commercial?'https://customer-geocoding-api.open-meteo.com/v1/search':'https://geocoding-api.open-meteo.com/v1/search');
  let u:URL;try{u=new URL((kind==='forecast'?env.HEARTBEAT_WEATHER_FORECAST_URL:env.HEARTBEAT_WEATHER_GEOCODING_URL)||fallback);}catch{throw new WeatherConfigurationError('Weather endpoint is invalid.');}
- const known=commercial?['customer-api.open-meteo.com','customer-geocoding-api.open-meteo.com']:['api.open-meteo.com','geocoding-api.open-meteo.com'];
+ const known=visual?['weather.visualcrossing.com']:commercial?['customer-api.open-meteo.com','customer-geocoding-api.open-meteo.com']:['api.open-meteo.com','geocoding-api.open-meteo.com'];
  const hosts=new Set([...known,...(env.HEARTBEAT_WEATHER_ALLOWED_HOSTS||'').split(',').map(v=>v.trim().toLowerCase()).filter(Boolean)]);
  const privateHost=u.hostname==='localhost'||u.hostname.endsWith('.localhost')||u.hostname.endsWith('.local')||u.hostname.includes(':')||/^\d+(\.\d+){3}$/.test(u.hostname);
  if(u.protocol!=='https:'||u.port||u.username||u.password||privateHost||!hosts.has(u.hostname)||u.search||u.hash)throw new WeatherConfigurationError('Weather endpoint is not an approved HTTPS origin.');
@@ -43,18 +43,40 @@ function observation(value:unknown){
  const solar=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v*1000<8640000000000000?new Date(v*1000).toISOString():undefined;
  return {temperature:typeof c.temperature_2m==='number'&&Number.isFinite(c.temperature_2m)&&c.temperature_2m>=-90&&c.temperature_2m<=65?c.temperature_2m:null,observedAt,weatherCode:typeof c.weather_code==='number'&&Number.isInteger(c.weather_code)?c.weather_code:null,isDay:c.is_day===1?true:c.is_day===0?false:null,sunrise:solar(d?.daily?.sunrise?.[0]),sunset:solar(d?.daily?.sunset?.[0])};
 }
+// Translate the free commercial-use provider into the existing observation
+// contract. An unrecognized icon remains unknown rather than inventing weather.
+function visualCrossing(value:unknown,kind:'forecast'|'search'){
+ if(!value||typeof value!=='object')throw new Error('Weather response was invalid.');
+ const d=value as {latitude?:unknown;longitude?:unknown;resolvedAddress?:unknown;timezone?:unknown;currentConditions?:Record<string,unknown>};
+ if(kind==='search'){
+  const parts=typeof d.resolvedAddress==='string'?d.resolvedAddress.split(',').map(v=>v.trim()).filter(Boolean):[];
+  if(parts.length<2)return {results:[]};
+  return {results:[{name:parts[0],country:parts.at(-1),...(parts.length>2?{admin1:parts.slice(1,-1).join(', ')}:{}),latitude:d.latitude,longitude:d.longitude,timezone:d.timezone}]};
+ }
+ const c=d.currentConditions;if(!c)throw new Error('Weather response was invalid.');
+ const icons:Record<string,number>={'clear-day':0,'clear-night':0,'partly-cloudy-day':2,'partly-cloudy-night':2,cloudy:3,rain:61,'showers-day':80,'showers-night':80,snow:71,'snow-showers-day':85,'snow-showers-night':85,sleet:68,fog:45,wind:3,thunder:95,'thunder-rain':95,'thunder-showers-day':95,'thunder-showers-night':95};
+ const epoch=c.datetimeEpoch,sunrise=c.sunriseEpoch,sunset=c.sunsetEpoch;
+ return {current:{time:epoch,temperature_2m:c.temp,weather_code:typeof c.icon==='string'?icons[c.icon]:undefined,is_day:typeof epoch==='number'&&typeof sunrise==='number'&&typeof sunset==='number'?(epoch>=sunrise&&epoch<sunset?1:0):null},daily:{sunrise:[sunrise],sunset:[sunset]}};
+}
 async function waitForCaller<T>(work:Promise<T>,signal?:AbortSignal):Promise<T>{
  if(!signal)return work;if(signal.aborted)throw new DOMException('Request cancelled.','AbortError');
  return new Promise<T>((resolve,reject)=>{const aborted=()=>reject(new DOMException('Request cancelled.','AbortError'));signal.addEventListener('abort',aborted,{once:true});work.then(resolve,reject).finally(()=>signal.removeEventListener('abort',aborted));});
 }
 export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;now?:()=>number;sleep?:(ms:number)=>Promise<void>}={}){
  const fetcher=deps.fetcher||fetch,now=deps.now||Date.now,sleep=deps.sleep||((ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms)));
- const attribution=env.HEARTBEAT_WEATHER_ATTRIBUTION||'Weather by Open-Meteo; location data by GeoNames';
+ const attribution=env.HEARTBEAT_WEATHER_ATTRIBUTION||(env.HEARTBEAT_WEATHER_PROVIDER==='visual-crossing-free'?'Weather data provided by Visual Crossing Weather':'Weather by Open-Meteo; location data by GeoNames');
  let scope:Promise<string>|undefined;
  const configScope=()=>scope??=(async()=>{const config=[env.HEARTBEAT_WEATHER_PROVIDER||'open-meteo-free',env.HEARTBEAT_WEATHER_API_KEY||'',env.HEARTBEAT_WEATHER_FORECAST_URL||'',env.HEARTBEAT_WEATHER_GEOCODING_URL||''].join('|');return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(config))),v=>v.toString(16).padStart(2,'0')).join('');})();
  async function get(kind:'forecast'|'search',params:URLSearchParams,ttl:number,signal?:AbortSignal):Promise<{entry:Entry;stale:boolean;host:string}>{
   if(signal?.aborted)throw new DOMException('Request cancelled.','AbortError');
-  const url=endpoint(env,kind);for(const [k,v] of params)url.searchParams.set(k,v);
+  const url=endpoint(env,kind);
+  if(env.HEARTBEAT_WEATHER_PROVIDER==='visual-crossing-free'){
+   const location=kind==='search'?params.get('name'):`${params.get('latitude')},${params.get('longitude')}`;
+   if(!location||!/[\p{L}\p{N}]/u.test(location))throw new WeatherConfigurationError('Choose a valid location.');
+   url.pathname=`${url.pathname.replace(/\/+$/,'')}/${encodeURIComponent(location)}/today`;
+   params=new URLSearchParams({unitGroup:'metric',include:'current,days',elements:'datetimeEpoch,temp,icon,sunriseEpoch,sunsetEpoch',contentType:'json'});
+  }
+  for(const [k,v] of params)url.searchParams.set(k,v);
   const namespace=await configScope(),key=`${namespace}:${url.origin}${url.pathname}:${kind}:${params.toString()}`,circuitKey=`${namespace}:${url.origin}`;
   const saved=cache.get(key);if(saved&&saved.expires>now())return {entry:saved,stale:false,host:url.hostname};
   const fallback=(reason?:unknown)=>{if(reason instanceof WeatherConfigurationError)throw reason;if(kind==='forecast'&&saved&&now()-saved.fetchedAt<=STALE_TTL){const c=observation(saved.value);if(now()-c.observedAt<=OBSERVATION_MAX_AGE&&c.observedAt-now()<=300000)return {entry:saved,stale:true,host:url.hostname};}throw reason instanceof WeatherUnavailableError?reason:new WeatherUnavailableError();};
@@ -66,7 +88,7 @@ export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;
   const work=(async()=>{try{
    let value:unknown;
    for(let attempt=0;attempt<2;attempt++){
-    try{const r=await fetcher(url.href,{signal:AbortSignal.timeout(6000),redirect:'manual'});if(!r.ok){await r.body?.cancel().catch(()=>{});if([400,401,403,404].includes(r.status))throw new WeatherConfigurationError('Weather provider rejected its configuration. Contact the operator.',r.status);throw new WeatherUnavailableError('http',r.status);}value=await boundedJSON(r);if(kind==='forecast')observation(value);else if(!value||typeof value!=='object'||(value as {error?:unknown}).error)throw new Error('Location response was invalid.');break;}
+    try{const r=await fetcher(url.href,{signal:AbortSignal.timeout(6000),redirect:'manual'});if(!r.ok){await r.body?.cancel().catch(()=>{});if([400,401,403,404].includes(r.status))throw new WeatherConfigurationError('Weather provider rejected its configuration. Contact the operator.',r.status);throw new WeatherUnavailableError('http',r.status);}value=await boundedJSON(r);if(env.HEARTBEAT_WEATHER_PROVIDER==='visual-crossing-free')value=visualCrossing(value,kind);if(kind==='forecast')observation(value);else if(!value||typeof value!=='object'||(value as {error?:unknown}).error)throw new Error('Location response was invalid.');break;}
     catch(error){if(error instanceof WeatherConfigurationError||attempt===1)throw error;await sleep(150);}
    }
    const entry={value,fetchedAt:now(),expires:now()+ttl};boundedSet(cache,key,entry);circuits.delete(circuitKey);return entry;

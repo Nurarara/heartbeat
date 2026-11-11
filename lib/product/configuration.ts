@@ -20,7 +20,7 @@ export function configurationErrors(env:ProductEnv){
    if(!env.HEARTBEAT_DIRECTOR_MODEL?.startsWith('@cf/')||!(env.HEARTBEAT_IMAGE_PROVIDER==='kie'?kieConfigured(env):(!env.HEARTBEAT_IMAGE_PROVIDER||env.HEARTBEAT_IMAGE_PROVIDER==='cloudflare')&&env.HEARTBEAT_IMAGE_MODEL==='@cf/black-forest-labs/flux-1-schnell'))errors.push('unsupported_models');
    if(!(Number(env.HEARTBEAT_DAILY_BUDGET_MICROS)>0)||!(Number(env.HEARTBEAT_DIRECTOR_ESTIMATE_MICROS)>0)||!(Number(env.HEARTBEAT_IMAGE_ESTIMATE_MICROS)>0))errors.push('unapproved_operating_budget');
   }
-  if(env.HEARTBEAT_WEATHER_PROVIDER!=='open-meteo-commercial'||!env.HEARTBEAT_WEATHER_API_KEY)errors.push('commercial_weather_required');
+  if(!(env.HEARTBEAT_WEATHER_PROVIDER==='open-meteo-commercial'&&env.HEARTBEAT_WEATHER_API_KEY)&&env.HEARTBEAT_WEATHER_PROVIDER!=='visual-crossing-free')errors.push('commercial_weather_required');
   if(env.HEARTBEAT_LEGACY_ROUTES_ENABLED==='true')errors.push('legacy_routes_forbidden_hosted');
   if(env.HEARTBEAT_BILLING_ENABLED==='true'&&(!env.STRIPE_SECRET_KEY||!env.STRIPE_WEBHOOK_SECRET||!env.STRIPE_STUDIO_PRICE_ID||!env.STRIPE_ATELIER_PRICE_ID||env.STRIPE_STUDIO_PRICE_ID===env.STRIPE_ATELIER_PRICE_ID||!env.HEARTBEAT_EMAIL_API_KEY||!env.HEARTBEAT_EMAIL_FROM))errors.push('billing_configuration_incomplete');
  }
