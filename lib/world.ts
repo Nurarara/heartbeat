@@ -2,7 +2,7 @@ import type { Pulse } from "./pulse";
 import type { ArtDirection, WorldMemory } from "./story";
 export type Place = { name: string; country: string; timezone: string; latitude: number; longitude: number; admin1?: string };
 export type Profile = { name: string; location: Place; style: string; vibe: string; cadence: number; playbackVersion?: number; adaptive: boolean; unit: "c" | "f"; showClock: boolean; showTemperature: boolean; reducedMotion: boolean; live: boolean };
-export type Context = { temperature: number | null; observedAt: number; fetchedAt: number; weatherCode: number | null; isDay: boolean | null; sunrise?: string; sunset?: string; stale?: boolean };
+export type Context = { temperature: number | null; observedAt: number; fetchedAt: number; weatherCode: number | null; isDay: boolean | null; sunrise?: string; sunset?: string; stale?: boolean; provenance?: { provider: string } };
 export type Frame = { id: string; url: string; title: string; phase: string; reason: string; generatedAt: number; targetAt: number; context: Context | null; preserve: string[]; changes: string[]; source: "preview" | "live"; direction?:ArtDirection };
 export type World = { memory?:WorldMemory|null; pulse?: Pulse | null; profile: Profile; displayed: Frame; pending: Frame | null; version: number; moments: number; attempts: number; status: string; lastError: string | null };
 export const LONDON: Place = { name: "London", country: "United Kingdom", timezone: "Europe/London", latitude: 51.5085, longitude: -0.1257 };
