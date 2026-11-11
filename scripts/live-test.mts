@@ -19,7 +19,7 @@ import type { Place } from '../lib/world.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1] ?? '');
-const count = Math.max(1, Math.min(10, Number(args.get('count') || 5)));
+const count = Math.max(1, Math.min(24, Number(args.get('count') || 5)));
 const everyMinutes = Math.max(1, Math.min(60, Number(args.get('every') || 2)));
 const port = Number(args.get('port') || 5180);
 
@@ -110,34 +110,38 @@ body.awake .info{opacity:1}.info b{font-size:20px;letter-spacing:-.04em}
 body.awake .why{opacity:1}
 .wait{position:fixed;inset:0;display:grid;place-items:center;color:#9ba2a9;font-size:14px;letter-spacing:.04em}</style></head>
 <body><div class="art" id="art"></div>
-<div class="reading br" id="reading" hidden><time id="time"></time><span id="temp"></span></div>
+<div class="reading br" id="clockbox" hidden><time id="time"></time></div><div class="reading tl" id="tempbox" hidden><span id="temp"></span></div>
 <div class="info"><span><b>heartbeat</b>&nbsp; live test</span><span id="status"></span></div><p class="why" id="why"></p>
 <div class="wait" id="wait">Reading the weather and preparing the first picture…</div>
 <script>
-const $=id=>document.getElementById(id);let shown='',zone='UTC',temp=null,wake=0;const preloaded=new Set();
-const clock=()=>{$('time').textContent=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:zone}).format(new Date());};
-setInterval(clock,1000);
+const $=id=>document.getElementById(id);let shown='',temp=null,wake=0;const preloaded=new Set();
+// The clock follows this computer's own time, so it changes exactly with the desktop clock.
+const clock=()=>{const n=new Date();$('time').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');};
+setInterval(clock,250);clock();
 addEventListener('pointermove',()=>{document.body.classList.add('awake');clearTimeout(wake);wake=setTimeout(()=>document.body.classList.remove('awake'),2500);});
 // Put the reading where the picture is calmest, and pick light or dark ink for that spot.
 function placement(img){
   const W=48,H=27,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d',{willReadFrequently:true});
   const scale=Math.max(W/img.naturalWidth,H/img.naturalHeight),dw=img.naturalWidth*scale,dh=img.naturalHeight*scale;g.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
   const d=g.getImageData(0,0,W,H).data,L=(x,y)=>{const i=(y*W+x)*4;return (0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255;};
-  const boxes={bl:[0,H*.55,W*.42,H],br:[W*.58,H*.55,W,H],tl:[0,0,W*.42,H*.42],tr:[W*.58,0,W,H*.42]};let best='br',score=1e9,light=0;
+  const boxes={bl:[0,H*.55,W*.42,H],br:[W*.58,H*.55,W,H],tl:[0,0,W*.42,H*.42],tr:[W*.58,0,W,H*.42]};const ranked=[];
   for(const [k,[x0,y0,x1,y1]] of Object.entries(boxes)){let sum=0,sq=0,edge=0,n=0;
     for(let y=Math.floor(y0);y<Math.floor(y1);y++)for(let x=Math.floor(x0);x<Math.floor(x1);x++){const v=L(x,y);sum+=v;sq+=v*v;n++;if(x+1<W)edge+=Math.abs(v-L(x+1,y));if(y+1<H)edge+=Math.abs(v-L(x,y+1));}
-    const mean=sum/n,busy=Math.sqrt(Math.max(0,sq/n-mean*mean))+edge/n+(k[0]==='t'?.02:0);if(busy<score){score=busy;best=k;light=mean;}}
-  return {corner:best,dark:light>.62};
+    const mean=sum/n,busy=Math.sqrt(Math.max(0,sq/n-mean*mean))+edge/n+(k[0]==='t'?.02:0);ranked.push({corner:k,busy,dark:mean>.62});}
+  ranked.sort((a,b)=>a.busy-b.busy);const clockSpot=ranked[0];
+  // Temperature goes to the calmest corner on the other side, well away from the clock.
+  const tempSpot=ranked.find(r=>r.corner[1]!==clockSpot.corner[1]);
+  return {clock:clockSpot,temp:tempSpot};
 }
 async function show(frame){
   const img=new Image();img.src='/img/'+frame.file;try{await img.decode();}catch{return;}
-  shown=frame.file;const art=$('art'),reading=$('reading'),spot=placement(img);
+  shown=frame.file;const art=$('art'),spot=placement(img),boxes=[[$('clockbox'),spot.clock],[$('tempbox'),spot.temp]];
   art.querySelectorAll('img').forEach(i=>i.classList.remove('on'));art.append(img);requestAnimationFrame(()=>img.classList.add('on'));
   setTimeout(()=>[...art.querySelectorAll('img')].slice(0,-1).forEach(i=>i.remove()),3000);
-  reading.classList.add('moving');setTimeout(()=>{reading.className='reading '+spot.corner+(spot.dark?' dark':'');reading.hidden=false;},reading.hidden?0:1200);
+  for(const [box,place] of boxes){const first=box.hidden;box.classList.add('moving');setTimeout(()=>{box.className='reading '+place.corner+(place.dark?' dark':'');box.hidden=false;},first?0:1200);}
   temp=frame.temperature;$('temp').textContent=temp==null?'':Math.round(temp)+'°';$('why').textContent=frame.title+' · '+frame.reason;$('wait').hidden=true;
 }
-async function tick(){let s;try{s=await (await fetch('/state',{cache:'no-store'})).json();}catch{return;}zone=s.timezone;clock();
+async function tick(){let s;try{s=await (await fetch('/state',{cache:'no-store'})).json();}catch{return;}
   const due=s.frames.filter(f=>f.file&&f.showAt&&f.showAt<=Date.now()).at(-1),ready=s.frames.filter(f=>f.file).length;
   const left=s.done?'finished':s.nextAt?'next in '+Math.max(0,Math.round((s.nextAt-Date.now())/1000))+'s':'preparing';
   $('status').textContent=s.place+' · '+ready+' of '+s.count+' ready · '+left;
