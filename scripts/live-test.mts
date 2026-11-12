@@ -118,6 +118,9 @@ const $=id=>document.getElementById(id);let shown='',temp=null,wake=0;const prel
 // The clock follows this computer's own time, so it changes exactly with the desktop clock.
 const clock=()=>{const n=new Date();$('time').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');};
 setInterval(clock,250);clock();
+// Click anywhere (or press F) to fill the whole screen; Escape leaves full screen.
+const full=()=>{if(document.fullscreenElement)return;const el=document.documentElement;(el.requestFullscreen||el.webkitRequestFullscreen)?.call(el)?.catch?.(()=>{});};
+addEventListener('click',full);addEventListener('keydown',e=>{if(e.key==='f'||e.key==='F')full();});
 addEventListener('pointermove',()=>{document.body.classList.add('awake');clearTimeout(wake);wake=setTimeout(()=>document.body.classList.remove('awake'),2500);});
 // Put the reading where the picture is calmest, and pick light or dark ink for that spot.
 function placement(img){
