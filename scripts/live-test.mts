@@ -19,6 +19,8 @@ import type { Place } from '../lib/world.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1] ?? '');
+// PowerShell drops `--`, so npm swallows the flags and passes them as npm_config_* instead. Accept both.
+for (const key of ['count', 'every', 'model', 'city', 'port']) { const value = process.env[`npm_config_${key}`]; if (!args.has(key) && value && value !== 'true') args.set(key, value); }
 const count = Math.max(1, Math.min(24, Number(args.get('count') || 5)));
 const everyMinutes = Math.max(1, Math.min(60, Number(args.get('every') || 2)));
 const port = Number(args.get('port') || 5180);
