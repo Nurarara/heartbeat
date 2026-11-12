@@ -1,7 +1,7 @@
 // Live intelligence test: real local time + live weather -> Cloudflare director -> Kie painter.
 // Runs a fixed number of attempts, then stops on its own. Credentials come from .dev.vars only.
 //   npm run live:test                      (London, 5 pictures, every 2 minutes, z-image)
-//   npm run live:test -- --count 3 --every 3 --model seedream/5-5-text-to-image --city Kyoto
+//   npm run live:test count=12 every=10 model=seedream/5-5-text-to-image city=Kyoto
 import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -18,9 +18,14 @@ import type { Place } from '../lib/world.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = new Map<string, string>();
-for (let i = 2; i < process.argv.length; i += 2) args.set(process.argv[i].replace(/^--/, ''), process.argv[i + 1] ?? '');
-// PowerShell drops `--`, so npm swallows the flags and passes them as npm_config_* instead. Accept both.
-for (const key of ['count', 'every', 'model', 'city', 'port']) { const value = process.env[`npm_config_${key}`]; if (!args.has(key) && value && value !== 'true') args.set(key, value); }
+// Accepts `--count 12 --every 10` and `count=12 every=10`. The second form also works through
+// `npm run` in PowerShell, which drops the `--` separator and swallows dashed flags.
+const argv = process.argv.slice(2);
+for (let i = 0; i < argv.length; i++) {
+  const pair = /^-{0,2}([a-z]+)=(.*)$/.exec(argv[i]);
+  if (pair) args.set(pair[1], pair[2]);
+  else if (argv[i].startsWith('--')) { args.set(argv[i].slice(2), argv[i + 1] ?? ''); i++; }
+}
 const count = Math.max(1, Math.min(24, Number(args.get('count') || 5)));
 const everyMinutes = Math.max(1, Math.min(60, Number(args.get('every') || 2)));
 const port = Number(args.get('port') || 5180);
