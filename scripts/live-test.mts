@@ -99,11 +99,16 @@ async function attempt(n: number) {
   await writeFile(path.join(outDir, 'log.json'), JSON.stringify(state, null, 2));
 }
 
-const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Heartbeat · live test</title>
+const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Heartbeat · live test</title>
 <style>[hidden]{display:none!important}@font-face{font-family:Manrope;src:url(/font) format("truetype")}
 html,body{margin:0;height:100%;background:#05080c;font-family:Manrope,Segoe UI,Arial,sans-serif;overflow:hidden;cursor:none}
 body.awake{cursor:default}
-.art{position:fixed;inset:0}.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 2.4s ease}.art img.on{opacity:1}
+.art{position:fixed;inset:0}.frame{position:absolute;inset:0;opacity:0;transition:opacity 2.4s ease}.frame.on{opacity:1}
+.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.frame .back{display:none}
+/* Tall screens (phones held upright): show the whole picture, with a soft blurred copy filling the space around it. */
+@media (orientation:portrait){.frame .back{display:block;filter:blur(28px) brightness(.55);transform:scale(1.15)}.frame .main{object-fit:contain}
+.reading time{font-size:clamp(64px,22vw,120px)}.reading span{font-size:clamp(34px,10vw,64px)}
+.reading.bl,.reading.br{bottom:calc(5vh + env(safe-area-inset-bottom,0px))}.reading.tl,.reading.tr{top:calc(5vh + env(safe-area-inset-top,0px))}}
 .reading{position:fixed;--ink:#f4f1ea;--shade:#0009;color:var(--ink);text-shadow:0 2px 24px var(--shade);transition:opacity 1.2s ease;display:flex;flex-direction:column;gap:2px}
 .reading.dark{--ink:#17191c;--shade:#fff6}
 .reading.bl{left:5vw;bottom:6vh;align-items:flex-start}.reading.br{right:5vw;bottom:6vh;align-items:flex-end}
@@ -131,6 +136,7 @@ addEventListener('click',full);addEventListener('keydown',e=>{if(e.key==='f'||e.
 addEventListener('pointermove',()=>{document.body.classList.add('awake');clearTimeout(wake);wake=setTimeout(()=>document.body.classList.remove('awake'),2500);});
 // Put the reading where the picture is calmest, and pick light or dark ink for that spot.
 function placement(img){
+  if(innerHeight>innerWidth)return {clock:{corner:'br',dark:false},temp:{corner:'tl',dark:false}};
   const W=48,H=27,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d',{willReadFrequently:true});
   const scale=Math.max(W/img.naturalWidth,H/img.naturalHeight),dw=img.naturalWidth*scale,dh=img.naturalHeight*scale;g.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
   const d=g.getImageData(0,0,W,H).data,L=(x,y)=>{const i=(y*W+x)*4;return (0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255;};
@@ -146,8 +152,9 @@ function placement(img){
 async function show(frame){
   const img=new Image();img.src='/img/'+frame.file;try{await img.decode();}catch{return;}
   shown=frame.file;const art=$('art'),spot=placement(img),boxes=[[$('clockbox'),spot.clock],[$('tempbox'),spot.temp]];
-  art.querySelectorAll('img').forEach(i=>i.classList.remove('on'));art.append(img);requestAnimationFrame(()=>img.classList.add('on'));
-  setTimeout(()=>[...art.querySelectorAll('img')].slice(0,-1).forEach(i=>i.remove()),3000);
+  const frameEl=document.createElement('div'),back=document.createElement('img');frameEl.className='frame';back.className='back';back.src=img.src;back.alt='';img.className='main';img.alt='';frameEl.append(back,img);
+  art.querySelectorAll('.frame').forEach(f=>f.classList.remove('on'));art.append(frameEl);requestAnimationFrame(()=>frameEl.classList.add('on'));
+  setTimeout(()=>[...art.querySelectorAll('.frame')].slice(0,-1).forEach(f=>f.remove()),3000);
   for(const [box,place] of boxes){const first=box.hidden;box.classList.add('moving');setTimeout(()=>{box.className='reading '+place.corner+(place.dark?' dark':'');box.hidden=false;},first?0:1200);}
   temp=frame.temperature;$('temp').textContent=temp==null?'':Math.round(temp)+'°';$('why').textContent=frame.title+' · '+frame.reason;$('wait').hidden=true;
 }
