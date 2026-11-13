@@ -146,6 +146,12 @@ The operator chooses an application address, authenticates hosting accounts, ver
 
 Technical deployment/configuration work can be assisted; creating/verifying external accounts, accepting costs and approving public commercial terms cannot be assumed from a successful code build. GitHub source publication does not itself deploy the app or activate billing.
 
+## Product strategy and feature roadmap
+
+Heartbeat is positioned as a delight product: people pay for it because it makes a space feel better, not because it removes a pain point. The core context-to-art loop is easy to copy, so long-term value has to come from taste, network effects, accumulated history, artist supply, distribution and cost engineering rather than features alone.
+
+The phased feature roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md). It covers circadian and cultural-calendar modes, linked windows and gifting, a year film, a persistent world, artist style packs, venue channels and a first-100-users plan. It also records the guardrails every new feature must respect. The launch work above remains Phase 0.
+
 ## Future horizons and boundaries
 
 Potential surfaces include phones/tablets, TVs/projectors, digital frames and eventually commercial installations. Hardware, fleet management, business signage and advanced event/news awareness remain deferred. Opt-in seasonal/cultural context must be appropriate and restrained. Civic/political cues should not promote candidates or present outcomes as good or bad.

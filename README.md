@@ -4,7 +4,7 @@
 
 **Status — 21 October 2026:** working local account application and unsigned Windows companion. Cloudflare generation has been exercised with real inference. Stripe and email integrations are implemented but not activated or tested end to end with their real services. Hosted production, real-browser visual QA and hands-on Windows qualification remain outstanding. This is not a public commercial release.
 
-Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the current system design](docs/system-design.md) for architecture diagrams, payment-to-access flow and credential locations; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
+Read [PROJECT_VISION.md](PROJECT_VISION.md) for the product reasoning, decisions and future scope; [the roadmap](docs/ROADMAP.md) for product strategy and the phased feature plan; [the current system design](docs/system-design.md) for architecture diagrams, payment-to-access flow and credential locations; [the build/activation guide](docs/product-build.md) for detailed operational steps; and [design reference notes](docs/design-reference-notes.md) for what informed the redesign.
 
 ## Start locally
 
