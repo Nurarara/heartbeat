@@ -15,3 +15,10 @@ export function nightQuality(bytes:Uint8Array) {
  });
  return {acceptable:samples.every(s=>s.acceptable),samples};
 }
+/** Names the comfort rule a picture breaks, or null. `dark` applies the night rule (also used by dark moods and
+ * deep twilight); `ceiling` is a gentler mean-brightness limit for dim moods and civil twilight. */
+export function lightProblem(bytes:Uint8Array,dark:boolean,ceiling?:number):'night-light'|'mood-light'|null {
+ if(!dark&&!(typeof ceiling==='number'&&ceiling<1))return null;
+ try{const quality=nightQuality(bytes);if(dark)return quality.acceptable?null:'night-light';return quality.samples[2].mean<=ceiling!?null:'mood-light';}
+ catch{return dark?'night-light':'mood-light';}
+}

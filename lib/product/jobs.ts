@@ -9,7 +9,9 @@ import {createWeatherAdapter,WeatherUnavailableError} from '../server/weather.ts
 import {planMoment,parseStoryMemory} from '../ambient-director.ts';
 import {creativePacket,directorFingerprint,type CreativeProposal} from '../creative.ts';
 import {withScreenFraming} from '../director-contract.ts';
-import {THEME_LIBRARY} from '../creative-library.ts';
+import {findTheme} from '../ingredients.ts';
+import {parseMood} from '../moods.ts';
+import {skyCue} from '../sky.ts';
 import {localClock} from '../ambient.ts';
 import {weatherCue} from '../weather-mood.ts';
 import type {Context,Place} from '../world.ts';
@@ -99,7 +101,7 @@ async function reconcileKnownOperations(env:JobEnv,job:Job,now:number){
 }
 async function candidateFor(env:JobEnv,job:Job){
  const saved=await db(env).prepare('SELECT candidate FROM ai_attempts WHERE id=? AND owner=? AND candidate IS NOT NULL').bind(job.id,job.owner).first<{candidate:string}>();if(saved)return JSON.parse(saved.candidate) as AICandidate;
- const c=JSON.parse(job.context!),d=JSON.parse(job.direction!),themes=d.themeIds.map((id:string)=>THEME_LIBRARY.find(t=>t.id===id)).filter(Boolean);
+ const c=JSON.parse(job.context!),d=JSON.parse(job.direction!),themes=[...d.themeIds,...(d.usedWords||[])].flatMap((id:string)=>{const theme=findTheme(id);return theme?[theme]:[];});
  const fingerprint=directorFingerprint(themes,d.prompt);
  const proposal:CreativeProposal={...c.packet.inspiration[0],source:'ai-director',id:`idea-${job.id}`,fingerprint,title:d.title,prompt:d.prompt,themes:themes.map(({id,label,category}:{id:string;label:string;category:CreativeProposal['themes'][number]['category']})=>({id,label,category})),lighting:d.lighting};
  const input=JSON.parse(job.input);return {id:job.id,requestId:job.request_id,worldId:job.world_id,surfaceId:job.surface_id,preferencesVersion:input.preferencesVersion,locationKey:c.baseline.locationKey,createdAt:job.created_at,direction:{...c.baseline,id:`generated-${job.id}`,reason:d.reason,artwork:{attemptId:job.id,url:`/api/ai/art/${job.id}`,title:d.title,proposal}}};
@@ -137,8 +139,8 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
    try{context=await (deps.context?deps.context(input.location):createWeatherAdapter(env,{now}).collect(input.location));}catch(error){if(!(error instanceof WeatherUnavailableError))throw error;context=null;console.warn('Heartbeat generation proceeding without weather',{jobId:job.id,category:error.category,status:error.status});}
    await boundary(deps,'context_read');
    const memory=parseStoryMemory(input.memory,input.location,at),baseline=planMoment(input.location,context,at,memory,at,{force:true,festive:input.festive}).direction;
-   const packet=withScreenFraming(creativePacket({phase:baseline.phase,season:baseline.season,temperature:baseline.brief.temperature,weekday:baseline.brief.weekday,festive:baseline.recipe.festive,localDate:baseline.recipe.date,localTime:localClock(input.location,at).time,weather:weatherCue(context,at),preferredStyle:input.style},memory?.creative,at,at,memory?.history.map(h=>h.direction.scene)||[],memory?.history.map(h=>({title:h.direction.artwork?.title||h.direction.scene,summary:h.direction.artwork?.proposal.prompt||h.direction.brief.activity,phase:h.direction.phase}))||[]),input.framing);
-   await transition(env,job,claim,'context_ready',{context:JSON.stringify({snapshot:context,baseline,packet,versions:{schema:1,prompt:2,validation:1,preferences:input.preferencesVersion,memory:input.memoryVersion,surface:input.surfaceVersion,models},capturedAt:at})},now());
+   const packet=withScreenFraming(creativePacket({phase:baseline.phase,season:baseline.season,temperature:baseline.brief.temperature,weekday:baseline.brief.weekday,festive:baseline.recipe.festive,localDate:baseline.recipe.date,localTime:localClock(input.location,at).time,weather:weatherCue(context,at),preferredStyle:input.style,mood:parseMood(input.mood),sky:skyCue(input.location,at,context?.cloudCover)},memory?.creative,at,at,memory?.history.map(h=>h.direction.scene)||[],memory?.history.map(h=>({title:h.direction.artwork?.title||h.direction.scene,summary:h.direction.artwork?.proposal.prompt||h.direction.brief.activity,phase:h.direction.phase}))||[],{ingredients:true}),input.framing);
+   await transition(env,job,claim,'context_ready',{context:JSON.stringify({snapshot:context,baseline,packet,versions:{schema:1,prompt:3,validation:1,preferences:input.preferencesVersion,memory:input.memoryVersion,surface:input.surfaceVersion,models},capturedAt:at})},now());
   }else if(job.status==='context_ready'){
    const operation=await reserveProviderOperation(env,job.id,'director',models.director,at);if(operation.state!=='reserved')throw new Error('unknown_provider_operation');
    await reserveOperatingAttempt(env,job.id,at);

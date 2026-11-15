@@ -4,7 +4,9 @@ import { kieImageProvider, kieConfigured } from './kie.ts';
 import { contextPlace, collectContext } from '../context.ts';
 import { parseStoryMemory, planMoment } from '../ambient-director.ts';
 import { creativePacket, directorFingerprint, type CreativeProposal } from '../creative.ts';
-import { THEME_LIBRARY } from '../creative-library.ts';
+import { findTheme } from '../ingredients.ts';
+import { parseMood } from '../moods.ts';
+import { skyCue } from '../sky.ts';
 import type { Context, Place } from '../world.ts';
 import type { AICandidate, AIResult } from './types.ts';
 import { localClock } from '../ambient.ts';
@@ -175,7 +177,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         if (at - startedAt > 30000) throw new Error('Context collection timed out.');
         const memory = typeof input.memory === 'string' ? parseStoryMemory(input.memory, place, at) : null;
         const baseline = planMoment(place, context, at, memory, id.charCodeAt(0) + at, { force: true, festive: input.festive === true }).direction;
-        const packet = creativePacket({ phase: baseline.phase, season: baseline.season, temperature: baseline.brief.temperature, weekday: baseline.brief.weekday, festive: baseline.recipe.festive, localDate: baseline.recipe.date, localTime: localClock(place, at).time, weather: weatherCue(context, at), preferredStyle: ['anime','watercolour','cinematic','pencil','photographic'].includes(String(input.style))?String(input.style):undefined }, memory?.creative, at, at, memory?.history.map(item => item.direction.scene) || [], memory?.history.map(item => ({ title: item.direction.artwork?.title || item.direction.scene, summary: item.direction.artwork?.proposal.prompt || item.direction.brief.activity, phase: item.direction.phase })) || []);
+        const packet = creativePacket({ phase: baseline.phase, season: baseline.season, temperature: baseline.brief.temperature, weekday: baseline.brief.weekday, festive: baseline.recipe.festive, localDate: baseline.recipe.date, localTime: localClock(place, at).time, weather: weatherCue(context, at), preferredStyle: ['anime','watercolour','cinematic','pencil','photographic'].includes(String(input.style))?String(input.style):undefined, mood: parseMood(input.mood), sky: skyCue(place, at, context?.cloudCover) }, memory?.creative, at, at, memory?.history.map(item => item.direction.scene) || [], memory?.history.map(item => ({ title: item.direction.artwork?.title || item.direction.scene, summary: item.direction.artwork?.proposal.prompt || item.direction.brief.activity, phase: item.direction.phase })) || [], { ingredients: true });
         const provider = providerFactory({ accountId: env.CLOUDFLARE_ACCOUNT_ID!, apiToken: env.CLOUDFLARE_API_TOKEN!, directorModel: env.HEARTBEAT_DIRECTOR_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast', imageModel: env.HEARTBEAT_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell' });
         const painter = useKie ? kieFactory({ apiKey: env.KIE_API_KEY!, model: env.HEARTBEAT_KIE_MODEL }) : provider;
         await database().prepare("UPDATE ai_attempts SET status = 'directing' WHERE id = ? AND claim = ?").bind(id, claim).run();
@@ -193,7 +195,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
         const imageHash = b64(new Uint8Array(await crypto.subtle.digest('SHA-256', image.bytes as BufferSource)));
         const repeated = await database().prepare("SELECT id FROM ai_attempts WHERE owner = ? AND image_hash = ? AND status IN ('ready','displayed') LIMIT 1").bind(session.id, imageHash).first();
         if (repeated) throw new Error('Duplicate image rejected.');
-        const themes = directed.themeIds.map(themeId => THEME_LIBRARY.find(theme => theme.id === themeId)!);
+        const themes = [...directed.themeIds, ...(directed.usedWords || [])].map(themeId => findTheme(themeId)!);
         const fingerprint = directorFingerprint(themes, directed.prompt);
         const proposal: CreativeProposal = { ...packet.inspiration[0], source: 'ai-director', id: `idea-${id}`, fingerprint, title: directed.title, prompt: directed.prompt, themes: themes.map(({ id: themeId, label, category }) => ({ id: themeId, label, category })), lighting: directed.lighting };
         const artKey = `heartbeat-ai/${session.id}/${id}.jpg`;
@@ -211,7 +213,7 @@ export function aiService(env: AIEnvironment, dependencies: Dependencies = {}) {
       } catch (error) {
         // Numeric provider diagnostics only: never log credentials, prompts or response bodies.
         if (error instanceof ProviderFailure) console.warn('Heartbeat provider failure', { kind: error.kind, status: error.status, code: error.code, hints: error.hints });
-        const reason = error instanceof ProviderFailure && error.hints?.includes('night-light') ? 'The picture was unsuitable for night. Your current artwork is kept.' : error instanceof ProviderFailure && error.kind === 'quota' ? 'The provider allowance is exhausted.' : error instanceof ProviderFailure && error.kind === 'configuration' ? 'The provider configuration needs checking.' : 'The picture could not be prepared. Your current artwork is kept.';
+        const reason = error instanceof ProviderFailure && error.hints?.includes('night-light') ? 'The picture was unsuitable for night. Your current artwork is kept.' : error instanceof ProviderFailure && error.hints?.includes('mood-light') ? 'The picture was too bright for this moment. Your current artwork is kept.' : error instanceof ProviderFailure && error.kind === 'quota' ? 'The provider allowance is exhausted.' : error instanceof ProviderFailure && error.kind === 'configuration' ? 'The provider configuration needs checking.' : 'The picture could not be prepared. Your current artwork is kept.';
         await database().prepare("UPDATE ai_attempts SET status = 'failed', error = ? WHERE id = ? AND claim = ? AND status NOT IN ('ready','displayed')").bind(reason, id, claim).run();
         await finish(session, claim);
         return response({ status: 'failed', reason, nextAt: startedAt + COOLDOWN });

@@ -29,7 +29,7 @@ export async function profileFor(env:ProductEnv,owner:string,input:{worldId?:unk
 }
 export async function resolveArtworkInput(env:ProductEnv,owner:string,input:{worldId?:unknown;surfaceId?:unknown}={},now=Date.now()) {
  const p=await profileFor(env,owner,input,now);if(!p.preferences)throw new ProductError('Choose a city in your studio first.',409);
- return {location:p.preferences.location,memory:p.memory?JSON.stringify(p.memory):null,style:p.preferences.style,festive:p.preferences.festiveTouches===true,worldId:p.worldId,surfaceId:p.surfaceId,preferencesVersion:p.version,memoryVersion:p.memoryVersion,surfaceVersion:p.surface.version,framing:screenFraming(p.surface.width,p.surface.height)};
+ return {location:p.preferences.location,memory:p.memory?JSON.stringify(p.memory):null,style:p.preferences.style,...(p.preferences.mood?{mood:p.preferences.mood}:{}),festive:p.preferences.festiveTouches===true,worldId:p.worldId,surfaceId:p.surfaceId,preferencesVersion:p.version,memoryVersion:p.memoryVersion,surfaceVersion:p.surface.version,framing:screenFraming(p.surface.width,p.surface.height)};
 }
 export async function updateSurfaceProfile(env:ProductEnv,owner:string,input:Record<string,unknown>,now:number,expectedCredentialEpoch:number) {
  const framing=typeof input.width==='number'&&typeof input.height==='number'?screenFraming(input.width,input.height):null;

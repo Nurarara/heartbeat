@@ -5,10 +5,12 @@ import { buildArtwork } from "@/public/prototype/artwork.mjs";
 import type { CreativeDirection } from "@/lib/ambient-director";
 import { acceptableNightLight } from "@/lib/artwork-quality";
 
-type Props = { direction: CreativeDirection; paused: boolean; reducedMotion: boolean; visible?: boolean; retryToken?: number; onError: (direction: CreativeDirection) => void; onDisplayed?: (direction: CreativeDirection) => void; canDisplay?: (direction: CreativeDirection) => boolean };
+type Props = { direction: CreativeDirection; paused: boolean; reducedMotion: boolean; visible?: boolean; retryToken?: number; onError: (direction: CreativeDirection) => void; onDisplayed?: (direction: CreativeDirection) => void; canDisplay?: (direction: CreativeDirection) => boolean;
+  /** Crossfade length in milliseconds; a mood can slow it down. */
+  fadeMs?: number };
 
 /** The current decoded image stays mounted until its decoded replacement is ready. */
-export function AmbientArt({ direction, paused, reducedMotion, visible = true, retryToken = 0, onError, onDisplayed, canDisplay }: Props) {
+export function AmbientArt({ direction, paused, reducedMotion, visible = true, retryToken = 0, onError, onDisplayed, canDisplay, fadeMs = 1800 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const current = useRef<{ element: HTMLDivElement; url: string; id: string } | null>(null);
   const urls = useRef(new Set<string>());
@@ -20,11 +22,12 @@ export function AmbientArt({ direction, paused, reducedMotion, visible = true, r
   const onErrorRef = useRef(onError);
   const displayedRef = useRef(onDisplayed);
   const canDisplayRef = useRef(canDisplay);
+  const fadeRef = useRef(fadeMs);
   useLayoutEffect(() => {
     directionRef.current = direction; onErrorRef.current = onError;
-    displayedRef.current = onDisplayed; canDisplayRef.current = canDisplay;
+    displayedRef.current = onDisplayed; canDisplayRef.current = canDisplay; fadeRef.current = fadeMs;
     displayState.current = { paused, visible };
-  }, [direction, onError, onDisplayed, canDisplay, paused, visible]);
+  }, [direction, onError, onDisplayed, canDisplay, paused, visible, fadeMs]);
   const signature = direction.id;
 
   useEffect(() => {
@@ -68,11 +71,13 @@ export function AmbientArt({ direction, paused, reducedMotion, visible = true, r
         const previous = current.current;
         if (previous) previous.element.setAttribute("aria-hidden", "true");
         host.current.appendChild(element);
+        const fade = Math.max(300, Math.min(10000, fadeRef.current));
+        if (fade !== 1800) element.style.transitionDuration = `${fade}ms`;
         element.getBoundingClientRect();
         element.classList.add("is-visible");
         current.current = { element, url: url!, id: spec.id };
         committed = true;
-        const delay = reducedMotion || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1850;
+        const delay = reducedMotion || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : fade + 50;
         const timer = setTimeout(() => {
           if (previous) { previous.element.remove(); URL.revokeObjectURL(previous.url); urls.current.delete(previous.url); }
           if (current.current?.element === element) {

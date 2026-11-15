@@ -34,7 +34,7 @@ try{
  response=await f.call('surface',{...input,expectedVersion:2,width:390,height:844},{cookie:a.cookie});assert.equal(response.status,200);
  const dependencies={now:f.now,context:async()=>({temperature:8,weatherCode:3,observedAt:f.now(),fetchedAt:f.now(),isDay:true}),provider:()=>{throw new Error('Must not call inference in context test');}};
  await advanceArtworkJob(f.env,job.id,dependencies);await advanceArtworkJob(f.env,job.id,dependencies);
- const prepared=f.sqlite.prepare('SELECT context,status FROM hb_jobs WHERE id=?').get(job.id);assert.equal(prepared.status,'context_ready');const context=JSON.parse(prepared.context);assert.deepEqual(context.packet.context.framing,canonical.framing,'A resize cannot mutate an already accepted job');assert.equal(context.versions.surface,2);assert.equal(context.versions.prompt,2);
+ const prepared=f.sqlite.prepare('SELECT context,status FROM hb_jobs WHERE id=?').get(job.id);assert.equal(prepared.status,'context_ready');const context=JSON.parse(prepared.context);assert.deepEqual(context.packet.context.framing,canonical.framing,'A resize cannot mutate an already accepted job');assert.equal(context.versions.surface,2);assert.equal(context.versions.prompt,3);
  const versionNow=f.sqlite.prepare('SELECT version FROM hb_surfaces WHERE id=?').get(profile.surfaceId).version;
  const races=await Promise.all([f.call('surface',{...input,expectedVersion:versionNow,width:1600,height:900},{cookie:a.cookie}),f.call('surface',{...input,expectedVersion:versionNow,width:1280,height:1280},{cookie:a.cookie})]);assert.deepEqual(races.map(value=>value.status).sort(),[200,409]);
  const saved=f.sqlite.prepare('SELECT width,height,version FROM hb_surfaces WHERE id=?').get(profile.surfaceId);

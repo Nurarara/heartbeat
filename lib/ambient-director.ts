@@ -3,7 +3,7 @@ import { localPhase, type Phase } from './pulse.ts';
 import { DEFAULT_PROFILE, type Context, type Place } from './world.ts';
 import { parseCreativeMemory, rememberCreativeDisplay, type CreativeMemory } from './creative.ts';
 import type { GeneratedArtwork } from './ai/types.ts';
-import { THEME_LIBRARY } from './creative-library.ts';
+import { findTheme } from './ingredients.ts';
 import { weatherCue, WEATHER_CONDITIONS, type WeatherCondition } from './weather-mood.ts';
 
 export type SceneId = 'room' | 'city' | 'cosmos' | 'meadow' | 'lake' | 'coast';
@@ -78,7 +78,7 @@ function readDirection(value: unknown, location: Place): CreativeDirection | nul
     const p = a.proposal;
     if (p.version !== 1 || !text(p.id, 100) || !text(p.fingerprint, 400) || !/^[a-z0-9|\-]+$/.test(p.fingerprint) || !text(p.title, 300) || !text(p.prompt, 2048) || !['dark', 'soft', 'daylight'].includes(p.lighting as string) || !Array.isArray(p.themes) || p.themes.length > 21 || !['local-sampler', 'ai-director'].includes(p.source as string) || !SCENES.includes(p.fallbackScene as SceneId) || !finite(p.score)) return null;
     if (value.phase === 'night' && p.lighting !== 'dark') return null;
-    const canonical = p.themes.map(item => object(item) ? THEME_LIBRARY.find(theme => theme.id === item.id && theme.category === item.category && theme.label === item.label) : undefined);
+    const canonical = p.themes.map(item => object(item) ? [findTheme(item.id)].find(theme => theme && theme.category === item.category && theme.label === item.label) : undefined);
     if (canonical.some(item => !item)) return null;
     artwork = { attemptId: a.attemptId, url: a.url as string, title: a.title, proposal: { version: 1, id: p.id, fingerprint: p.fingerprint, title: p.title, prompt: p.prompt, lighting: p.lighting as 'dark' | 'soft' | 'daylight', themes: canonical.map(item => ({ id: item!.id, category: item!.category, label: item!.label })), source: p.source as 'local-sampler' | 'ai-director', fallbackScene: p.fallbackScene as SceneId, score: p.score } };
   }

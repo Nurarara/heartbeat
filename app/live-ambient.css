@@ -511,3 +511,12 @@
 .heartbeat-live[data-running=true] .hb-controls{grid-row:4;position:relative;inset:auto;transform:none;justify-self:center;max-width:100%;flex-wrap:wrap}
 @media(max-width:600px){.heartbeat-live[data-running=true]{row-gap:20px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}}
 @media(max-height:430px){.heartbeat-live[data-running=true]{row-gap:12px;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));overflow-y:auto}.heartbeat-live .hb-artwork-status>small{display:none}}
+
+/* Mood chips: part of the controls, so they appear on movement or touch and fade away when idle. */
+.heartbeat-live .hb-moods{flex-basis:100%;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:8px}
+.heartbeat-live .hb-moods button{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 14px;border-radius:999px;border:1px solid #ffffff38;background:#0b1118a8;color:#f1eee4;font:500 12px/1 Manrope,Arial,sans-serif;backdrop-filter:blur(8px);cursor:pointer;transition:background .2s,border-color .2s}
+.heartbeat-live .hb-moods button:hover{border-color:#fff0d880;background:#243543bd}
+.heartbeat-live .hb-moods button[aria-pressed=true]{border-color:#fc684b;background:#fc684b2e;color:#fff0e7}
+.heartbeat-live .hb-moods button:disabled{opacity:.5;cursor:default}
+.heartbeat-live .hb-moods i{width:9px;height:9px;border-radius:50%;flex:none}
+@media(max-width:600px){.heartbeat-live .hb-moods{gap:6px}.heartbeat-live .hb-moods button{min-height:42px;padding:0 12px}}

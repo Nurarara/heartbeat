@@ -1,7 +1,7 @@
 // Server adapter only. Never import this module into a client component.
 // It is not exposed by a public route or activated by the default local display.
-import { DIRECTOR_SCHEMA, DIRECTOR_SYSTEM, finalImagePrompt, parseModelDirection, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
-import { nightQuality } from './night-quality.ts';
+import { DIRECTOR_SYSTEM, directorGuidance, directorSchema, finalImagePrompt, parseModelDirection, requiresDark, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
+import { lightProblem } from './night-quality.ts';
 
 type Config = { accountId: string; apiToken: string; directorModel: string; imageModel: string };
 type Fetch = typeof fetch;
@@ -93,7 +93,8 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
       const content = JSON.stringify(packet);
       if (content.length > 24000) throw new Error('Director context is too large.');
       // Avoid the provider's constrained-schema compiler; validate the full contract locally.
-      const system = `${DIRECTOR_SYSTEM}\nRespect context.preferredStyle when supplied, while still varying subjects and composition. Use context.weather to shape atmosphere and lighting. Rain, fog or overcast conditions call for subdued light, softened distance or sheltered comfort rather than defaulting to a bright summer sky. Express this creatively across varied subjects and places; do not repeat the same rainy window. Unknown weather stays unknown. Nighttime darkness always takes priority. For themeIds use exact supplied theme id values only, without duplicates; use an empty array if unsure.\nReturn a JSON object matching this schema: ${JSON.stringify(DIRECTOR_SCHEMA)}${options.mustReimagine ? '\nThis request requires REIMAGINE; HOLD is not permitted.' : ''}`;
+      const guidance = directorGuidance(packet);
+      const system = `${DIRECTOR_SYSTEM}\nRespect context.preferredStyle when supplied, while still varying subjects and composition. Use context.weather to shape atmosphere and lighting. Rain, fog or overcast conditions call for subdued light, softened distance or sheltered comfort rather than defaulting to a bright summer sky. Express this creatively across varied subjects and places; do not repeat the same rainy window. Unknown weather stays unknown. Nighttime darkness always takes priority. For themeIds use exact supplied theme id values only, without duplicates; use an empty array if unsure.${guidance ? `\n${guidance}` : ''}\nReturn a JSON object matching this schema: ${JSON.stringify(directorSchema(packet))}${options.mustReimagine ? '\nThis request requires REIMAGINE; HOLD is not permitted.' : ''}`;
       const result = await run(director, { messages: [{ role: 'system', content: system }, { role: 'user', content }], max_tokens: 900, temperature: .8, stream: false, response_format: { type: 'json_object' } }, 128000, options.signal);
       let value: unknown = result.response;
       try {
@@ -106,6 +107,10 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
           if (candidate.action === 'REIMAGINE' && Array.isArray(candidate.themeIds) && candidate.themeIds.length <= 21 && candidate.themeIds.every(id => typeof id === 'string')) {
             const allowed = new Set(packet.inspiration.flatMap(item => item.themes.map(theme => theme.id)));
             value = { ...candidate, themeIds: [...new Set(candidate.themeIds.filter(id => allowed.has(id)))] };
+            // Drawn-word ids are bookkeeping too: drop unknown or repeated ids, then let the contract
+            // decide whether enough real drawn words remain.
+            const drawn = new Set((packet.draw || []).map(word => word.id));
+            if (drawn.size && Array.isArray(candidate.usedWords) && candidate.usedWords.length <= 21 && candidate.usedWords.every(id => typeof id === 'string')) value = { ...(value as object), usedWords: [...new Set(candidate.usedWords.filter(id => drawn.has(id as string)))] };
           }
         }
         return parseModelDirection(value, packet, options.mustReimagine);
@@ -113,7 +118,7 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
       catch (error) {
         const failure=new ProviderFailure('invalid-output',false);
         const explanation=error instanceof Error?error.message.toLowerCase():'';
-        failure.hints=[typeof value==='string'?'director-json':'director-contract',...['theme','framing','night','hold','response'].filter(word=>explanation.includes(word))];
+        failure.hints=[typeof value==='string'?'director-json':'director-contract',...['theme','framing','night','hold','response','words','lighting'].filter(word=>explanation.includes(word))];
         const candidate=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
         console.warn('Heartbeat director validation rejected',{hints:failure.hints,titleLength:typeof candidate?.title==='string'?candidate.title.length:null,reasonLength:typeof candidate?.reason==='string'?candidate.reason.length:null,promptLength:typeof candidate?.prompt==='string'?candidate.prompt.length:null,promptLimit:packet.rules.maximumPromptCharacters,themeCount:Array.isArray(candidate?.themeIds)?candidate.themeIds.length:null});
         throw failure;
@@ -126,10 +131,8 @@ export function cloudflareProvider(config: Config, fetcher: Fetch = fetch) {
       if (typeof result.image !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(result.image) || result.image.length > 11_000_000 || result.image.length % 4 !== 0) throw new ProviderFailure('invalid-output', false);
       const raw = atob(result.image), bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
       const dimensions = jpegDimensions(bytes);
-      if(packet.context.phase==='night') {
-        try {if(!nightQuality(bytes).acceptable)throw new Error('Night art was too bright.');}
-        catch {const failure=new ProviderFailure('invalid-output',false);failure.hints=['night-light'];throw failure;}
-      }
+      const light=lightProblem(bytes,requiresDark(packet),packet.rules.maximumMeanLight);
+      if(light){const failure=new ProviderFailure('invalid-output',false);failure.hints=[light];throw failure;}
       return { bytes, mime: 'image/jpeg' as const, ...dimensions };
     },
   };

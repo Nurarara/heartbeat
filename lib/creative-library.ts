@@ -4,7 +4,8 @@
  * `requires` is an AND over tags already selected; `excludes` is an OR.
  * Temperature and phase express suitability, never evidence of weather conditions.
  */
-export type ThemeCategory = 'place' | 'subject' | 'activity' | 'object' | 'material' | 'style' | 'viewpoint';
+/** 'twist' and 'palette' belong to the ingredient engine (lib/ingredients.ts); this library never uses them. */
+export type ThemeCategory = 'place' | 'subject' | 'activity' | 'object' | 'material' | 'style' | 'viewpoint' | 'twist' | 'palette';
 
 export type ThemeEntry = {
   id: string;

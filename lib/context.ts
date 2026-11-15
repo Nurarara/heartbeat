@@ -33,13 +33,13 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
   return locationResults(data);
 }
 export async function collectContext(place: Place, signal?: AbortSignal): Promise<Context> {
-  const params = new URLSearchParams({ latitude: String(place.latitude), longitude: String(place.longitude), current: "temperature_2m,weather_code,is_day", daily: "sunrise,sunset", timezone: "auto", forecast_days: "1", timeformat: "unixtime", temperature_unit: "celsius" });
+  const params = new URLSearchParams({ latitude: String(place.latitude), longitude: String(place.longitude), current: "temperature_2m,weather_code,is_day,cloud_cover", daily: "sunrise,sunset", timezone: "auto", forecast_days: "1", timeformat: "unixtime", temperature_unit: "celsius" });
   const response = await fetch("https://api.open-meteo.com/v1/forecast?" + params, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000), cf: { cacheTtl: 300, cacheEverything: true } } as RequestInit);
   if (!response.ok) throw new Error("Weather unavailable");
-  const data = await response.json() as { current?: { time?: unknown; temperature_2m?: unknown; weather_code?: unknown; is_day?: unknown }; daily?: { sunrise?: unknown[]; sunset?: unknown[] } };
+  const data = await response.json() as { current?: { time?: unknown; temperature_2m?: unknown; weather_code?: unknown; is_day?: unknown; cloud_cover?: unknown }; daily?: { sunrise?: unknown[]; sunset?: unknown[] } };
   const observedAt = Number(data.current?.time) * 1000;
   if (typeof data.current?.time !== "number" || !Number.isFinite(observedAt) || observedAt <= 0) throw new Error("Invalid weather data");
   const solar = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0 && value * 1000 < 8640000000000000 ? new Date(value * 1000).toISOString() : undefined;
   const temperature = typeof data.current.temperature_2m === "number" && Number.isFinite(data.current.temperature_2m) && data.current.temperature_2m >= -90 && data.current.temperature_2m <= 65 ? data.current.temperature_2m : null;
-  return { temperature, observedAt, fetchedAt: Date.now(), weatherCode: typeof data.current.weather_code === "number" && Number.isInteger(data.current.weather_code) ? data.current.weather_code : null, isDay: data.current.is_day === 1 ? true : data.current.is_day === 0 ? false : null, sunrise: solar(data.daily?.sunrise?.[0]), sunset: solar(data.daily?.sunset?.[0]), stale: Date.now() - observedAt > 5400000 || observedAt - Date.now() > 300000 };
+  return { temperature, observedAt, fetchedAt: Date.now(), weatherCode: typeof data.current.weather_code === "number" && Number.isInteger(data.current.weather_code) ? data.current.weather_code : null, isDay: data.current.is_day === 1 ? true : data.current.is_day === 0 ? false : null, sunrise: solar(data.daily?.sunrise?.[0]), sunset: solar(data.daily?.sunset?.[0]), ...(typeof data.current.cloud_cover === "number" && data.current.cloud_cover >= 0 && data.current.cloud_cover <= 100 ? { cloudCover: Math.round(data.current.cloud_cover) } : {}), stale: Date.now() - observedAt > 5400000 || observedAt - Date.now() > 300000 };
 }

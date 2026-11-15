@@ -1,8 +1,11 @@
 import { THEME_LIBRARY, type ThemeCategory, type ThemeEntry } from './creative-library.ts';
 import type { SceneId } from './ambient-director.ts';
 import { weatherInspiration, type WeatherCue } from './weather-mood.ts';
+import { INGREDIENTS, MINIMUM_DRAWN_WORDS, drawIngredients, isIngredientId } from './ingredients.ts';
+import { MOODS, parseMood, type MoodId } from './moods.ts';
+import type { SkyCue } from './sky.ts';
 
-export type CreativeContext = { phase: 'morning' | 'day' | 'dusk' | 'night'; season: string; temperature: number | null; weekday: string; festive: boolean; localDate?: string; localTime?: string; weather?: WeatherCue; preferredStyle?:string };
+export type CreativeContext = { phase: 'morning' | 'day' | 'dusk' | 'night'; season: string; temperature: number | null; weekday: string; festive: boolean; localDate?: string; localTime?: string; weather?: WeatherCue; preferredStyle?:string; mood?: MoodId; sky?: SkyCue };
 export type CreativeProposal = {
   version: 1; id: string; fingerprint: string; title: string; prompt: string;
   themes: { id: string; category: ThemeCategory; label: string }[];
@@ -18,7 +21,9 @@ export type CreativeMemory = {
 };
 const CATEGORIES: ThemeCategory[] = ['place', 'subject', 'activity', 'object', 'material', 'style', 'viewpoint'];
 const SCENES: SceneId[] = ['room', 'city', 'cosmos', 'meadow', 'lake', 'coast'];
-const IDS = new Set([...THEME_LIBRARY.map(item => item.id), ...SCENES.map(scene => `scene:${scene}`)]);
+const IDS = new Set([...THEME_LIBRARY.map(item => item.id), ...INGREDIENTS.map(item => item.id), ...SCENES.map(scene => `scene:${scene}`)]);
+/** Ingredient words remembered for down-weighting. Older ones are forgotten, so memory stays small. */
+const MAX_REMEMBERED_WORDS = 120;
 const MAX_COUNT = 1_000_000_000;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_COUNT;
@@ -27,7 +32,7 @@ export const emptyCreativeMemory = (): CreativeMemory => ({ version: 1, displaye
 /** Long-term memory stores bounded counters and compact concepts, never a growing conversation. */
 export function parseCreativeMemory(value: unknown, now: number): CreativeMemory | null {
   if (!record(value) || value.version !== 1 || !count(value.displayed) || !record(value.usage) || !record(value.feedback) || !Array.isArray(value.recent) || value.recent.length > 64) return null;
-  if (!Number.isFinite(now) || Object.keys(value.usage).length > IDS.size || Object.keys(value.feedback).length > THEME_LIBRARY.length) return null;
+  if (!Number.isFinite(now) || Object.keys(value.usage).length > IDS.size || Object.keys(value.feedback).length > THEME_LIBRARY.length + INGREDIENTS.length) return null;
   const coverage = value.coverage === undefined ? [] : value.coverage;
   if (!Array.isArray(coverage) || ![0, 2048].includes(coverage.length) || coverage.some(item => !count(item))) return null;
   const usage: CreativeMemory['usage'] = {}, feedback: CreativeMemory['feedback'] = {};
@@ -62,6 +67,8 @@ export function rememberCreativeDisplay(memory: CreativeMemory | undefined, scen
     if (!IDS.has(id)) throw new Error('Unknown creative theme.');
     next.usage[id] = { count: Math.min(MAX_COUNT, (next.usage[id]?.count || 0) + 1), lastAt: at };
   }
+  const words = Object.keys(next.usage).filter(isIngredientId);
+  if (words.length > MAX_REMEMBERED_WORDS) for (const id of words.sort((a, b) => next.usage[a].lastAt - next.usage[b].lastAt).slice(0, words.length - MAX_REMEMBERED_WORDS)) delete next.usage[id];
   if (realized) {
     next.recent = [...next.recent, { fingerprint: realized.fingerprint, at }].slice(-64);
     // A fixed-size approximate count sketch remembers coverage beyond recent
@@ -159,12 +166,24 @@ export function proposeCreativeMoment(context: CreativeContext, memory: Creative
   return candidates.sort((a, b) => b.score - a.score)[0];
 }
 
-/** A small reusable request packet; it contains no running chat transcript or credentials. */
-export function creativePacket(context: CreativeContext, memory: CreativeMemory | undefined, seed: number, at: number, recentScenes: SceneId[], recentArtwork: { title: string; summary: string; phase: string }[] = []) {
-  const remembered = memory || emptyCreativeMemory();
+/** The brightest lighting a moment allows: night, a dark or dim mood, or a sun below the horizon. */
+function lightingLimit(context: CreativeContext): { maximumLighting?: 'dark' | 'soft'; maximumMeanLight?: number } {
+  const mood = MOODS[parseMood(context.mood)], sky = context.sky?.lightCeiling;
+  if (context.phase === 'night' || mood.lighting === 'dark' || sky === 'dark') return { maximumLighting: 'dark' };
+  if (mood.lighting === 'soft' || sky === 'soft') return { maximumLighting: 'soft', maximumMeanLight: Math.min(mood.lighting === 'soft' ? mood.brightnessCeiling : 1, sky === 'soft' ? .62 : 1) };
+  return {};
+}
+
+/** A small reusable request packet; it contains no running chat transcript or credentials.
+ * With `ingredients`, the packet carries one random word per group that the director must build from. */
+export function creativePacket(context: CreativeContext, memory: CreativeMemory | undefined, seed: number, at: number, recentScenes: SceneId[], recentArtwork: { title: string; summary: string; phase: string }[] = [], options: { ingredients?: boolean } = {}) {
+  const remembered = memory || emptyCreativeMemory(), limit = lightingLimit(context), mood = MOODS[parseMood(context.mood)];
+  const dark = limit.maximumLighting === 'dark';
   return {
     version: 1, context,
-    rules: { requiredLighting: context.phase === 'night' ? 'dark' : 'appropriate to local phase', noText: true, maximumPromptCharacters: 1800, memoryCommitsAfterDisplay: true },
+    rules: { requiredLighting: dark ? 'dark' : 'appropriate to local phase', noText: true, maximumPromptCharacters: 1800, memoryCommitsAfterDisplay: true, ...limit, ...(options.ingredients ? { minimumDrawnWords: MINIMUM_DRAWN_WORDS } : {}) },
+    ...(mood.id !== 'auto' ? { mood: { id: mood.id, instruction: mood.instruction } } : {}),
+    ...(options.ingredients ? { draw: drawIngredients(memory, seed, at, { mood: mood.id, dark }) } : {}),
     memory: {
       displayed: remembered.displayed, recentScenes: recentScenes.slice(-12),
       recentArtwork: recentArtwork.slice(-6).map(item => ({ title: item.title.slice(0, 140), summary: item.summary.slice(0, 350), phase: item.phase.slice(0, 10) })),
@@ -172,6 +191,7 @@ export function creativePacket(context: CreativeContext, memory: CreativeMemory 
       recentConcepts: remembered.recent.slice(-8).map(item => item.fingerprint),
       preferences: Object.entries(remembered.feedback).slice(-16).map(([id, taste]) => ({ id, ...taste })),
     },
-    inspiration: [0, 1, 2].map(offset => proposeCreativeMoment(context, memory, seed + offset * 997, at)),
+    // The random draw leads; one sampled idea remains only as a fallback scene family.
+    inspiration: (options.ingredients ? [0] : [0, 1, 2]).map(offset => proposeCreativeMoment(context, memory, seed + offset * 997, at)),
   };
 }

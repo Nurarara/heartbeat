@@ -37,11 +37,11 @@ async function boundedJSON(response:Response){
  const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 function observation(value:unknown){
- const d=value as {current?:{time?:unknown;temperature_2m?:unknown;weather_code?:unknown;is_day?:unknown};daily?:{sunrise?:unknown[];sunset?:unknown[]}}|null;
+ const d=value as {current?:{time?:unknown;temperature_2m?:unknown;weather_code?:unknown;is_day?:unknown;cloud_cover?:unknown};daily?:{sunrise?:unknown[];sunset?:unknown[]}}|null;
  const c=d?.current,observedAt=typeof c?.time==='number'?c.time*1000:NaN;
  if(!c||!Number.isFinite(observedAt)||observedAt<=0||observedAt>=8640000000000000)throw new Error('Weather response was invalid.');
  const solar=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&v*1000<8640000000000000?new Date(v*1000).toISOString():undefined;
- return {temperature:typeof c.temperature_2m==='number'&&Number.isFinite(c.temperature_2m)&&c.temperature_2m>=-90&&c.temperature_2m<=65?c.temperature_2m:null,observedAt,weatherCode:typeof c.weather_code==='number'&&Number.isInteger(c.weather_code)?c.weather_code:null,isDay:c.is_day===1?true:c.is_day===0?false:null,sunrise:solar(d?.daily?.sunrise?.[0]),sunset:solar(d?.daily?.sunset?.[0])};
+ return {temperature:typeof c.temperature_2m==='number'&&Number.isFinite(c.temperature_2m)&&c.temperature_2m>=-90&&c.temperature_2m<=65?c.temperature_2m:null,observedAt,weatherCode:typeof c.weather_code==='number'&&Number.isInteger(c.weather_code)?c.weather_code:null,isDay:c.is_day===1?true:c.is_day===0?false:null,sunrise:solar(d?.daily?.sunrise?.[0]),sunset:solar(d?.daily?.sunset?.[0]),...(typeof c.cloud_cover==='number'&&c.cloud_cover>=0&&c.cloud_cover<=100?{cloudCover:Math.round(c.cloud_cover)}:{})};
 }
 // Translate the free commercial-use provider into the existing observation
 // contract. An unrecognized icon remains unknown rather than inventing weather.
@@ -56,7 +56,7 @@ function visualCrossing(value:unknown,kind:'forecast'|'search'){
  const c=d.currentConditions;if(!c)throw new Error('Weather response was invalid.');
  const icons:Record<string,number>={'clear-day':0,'clear-night':0,'partly-cloudy-day':2,'partly-cloudy-night':2,cloudy:3,rain:61,'showers-day':80,'showers-night':80,snow:71,'snow-showers-day':85,'snow-showers-night':85,sleet:68,fog:45,wind:3,thunder:95,'thunder-rain':95,'thunder-showers-day':95,'thunder-showers-night':95};
  const epoch=c.datetimeEpoch,sunrise=c.sunriseEpoch,sunset=c.sunsetEpoch;
- return {current:{time:epoch,temperature_2m:c.temp,weather_code:typeof c.icon==='string'?icons[c.icon]:undefined,is_day:typeof epoch==='number'&&typeof sunrise==='number'&&typeof sunset==='number'?(epoch>=sunrise&&epoch<sunset?1:0):null},daily:{sunrise:[sunrise],sunset:[sunset]}};
+ return {current:{time:epoch,temperature_2m:c.temp,cloud_cover:c.cloudcover,weather_code:typeof c.icon==='string'?icons[c.icon]:undefined,is_day:typeof epoch==='number'&&typeof sunrise==='number'&&typeof sunset==='number'?(epoch>=sunrise&&epoch<sunset?1:0):null},daily:{sunrise:[sunrise],sunset:[sunset]}};
 }
 async function waitForCaller<T>(work:Promise<T>,signal?:AbortSignal):Promise<T>{
  if(!signal)return work;if(signal.aborted)throw new DOMException('Request cancelled.','AbortError');
@@ -74,7 +74,7 @@ export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;
    const location=kind==='search'?params.get('name'):`${params.get('latitude')},${params.get('longitude')}`;
    if(!location||!/[\p{L}\p{N}]/u.test(location))throw new WeatherConfigurationError('Choose a valid location.');
    url.pathname=`${url.pathname.replace(/\/+$/,'')}/${encodeURIComponent(location)}/today`;
-   params=new URLSearchParams({unitGroup:'metric',include:'current,days',elements:'datetimeEpoch,temp,icon,sunriseEpoch,sunsetEpoch',contentType:'json'});
+   params=new URLSearchParams({unitGroup:'metric',include:'current,days',elements:'datetimeEpoch,temp,icon,sunriseEpoch,sunsetEpoch,cloudcover',contentType:'json'});
   }
   for(const [k,v] of params)url.searchParams.set(k,v);
   const namespace=await configScope(),key=`${namespace}:${url.origin}${url.pathname}:${kind}:${params.toString()}`,circuitKey=`${namespace}:${url.origin}`;
@@ -102,7 +102,7 @@ export function createWeatherAdapter(env:ProductEnv,deps:{fetcher?:typeof fetch;
    contextPlace(new URLSearchParams({latitude:String(place.latitude),longitude:String(place.longitude),timezone:place.timezone}));
    // A roughly 100m grid keeps sharing conservative near coasts/hills. Include
    // timezone, units, fields and provider configuration in the cache identity.
-   const params=new URLSearchParams({latitude:place.latitude.toFixed(3),longitude:place.longitude.toFixed(3),current:'temperature_2m,weather_code,is_day',daily:'sunrise,sunset',timezone:place.timezone,forecast_days:'1',timeformat:'unixtime',temperature_unit:'celsius'});
+   const params=new URLSearchParams({latitude:place.latitude.toFixed(3),longitude:place.longitude.toFixed(3),current:'temperature_2m,weather_code,is_day,cloud_cover',daily:'sunrise,sunset',timezone:place.timezone,forecast_days:'1',timeformat:'unixtime',temperature_unit:'celsius'});
    const result=await get('forecast',params,FRESH_TTL,signal),c=observation(result.entry.value),stale=result.stale||now()-c.observedAt>OBSERVATION_MAX_AGE||c.observedAt-now()>300000;
    return {...c,fetchedAt:result.entry.fetchedAt,stale,provenance:{version:1,provider:env.HEARTBEAT_WEATHER_PROVIDER||'open-meteo-free',attribution,endpointHost:result.host,freshness:stale?'stale':'fresh',locationGrid:'0.001deg'}};
   },

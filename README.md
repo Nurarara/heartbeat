@@ -83,6 +83,22 @@ Older `/pulse`, `/story`, world APIs and prototype routes remain reference code.
 - **Operations:** independent scheduled repair/retention/deletion tasks, immediate account revocation with resumable cleanup, aggregate operational alerts and separately authenticated audited recovery endpoints. Monitoring destinations and production runbooks still require operator setup.
 - **Windows development companion:** six-digit pairing, scoped/revocable device credentials, current-user DPAPI encryption, private downloads, explicit wallpaper apply/restore, per-monitor selection, optional automatic updates and cached `.scr` entry modes. It is unsigned, not an installer or qualified release.
 
+## Moods, the ingredient engine and sky awareness
+
+Three additions make each picture more surprising and more tied to the exact moment. All three reach the AI director together with the time and weather.
+
+- **Ingredient engine** (`lib/ingredients.ts`): 350 words in seven groups of 50 (subject, object, place, style, twist, viewpoint, palette), from "a fountain pen" to "inside a black hole". Every picture draws one word per group at random. The director must build the scene from at least two of them, may swap one that truly clashes, and has to report which it used; a reply that uses fewer than two is rejected. Words shown recently are drawn less often, using the existing bounded creative memory (at most 120 words remembered). Only light safety filters apply: no bright palettes in darkness, no high-energy twists in Sleep. The older 93-entry library still drives `/local-study`.
+- **Moods** (`lib/moods.ts`): Auto (default), Calm, Sleep, Cosy, Focus, Playful, Dreamy and Romantic. A mood adds one instruction for the director, shifts which palettes and twists are drawn, sets a brightness ceiling (Sleep is near-black all day; Romantic stays dim) and sets the crossfade speed. It guides the feeling without replacing the moment, and night darkness always wins. On the account display, move the mouse or tap to show the mood chips; the choice is saved to the account, the current picture stays and the **next** picture follows it. The same choice is under Atmosphere in the studio.
+- **Sky awareness** (`lib/sky.ts`): the sun's height and direction and the moon's phase are calculated from the city's coordinates and the time, with no extra service, and cloud cover is read with the weather. The director receives plain words such as "golden hour: a very low warm sun in the north-west, very long soft shadows" or "a thin waxing crescent moon". After sunset the picture must be dim (twilight), then dark, before the existing night check takes over.
+
+Try it with the live test (about 0.8 Kie credits per picture with z-image; it stops by itself):
+
+```powershell
+npm run live:test count=5 every=2 mood=dreamy
+```
+
+Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
+
 ## Why old pictures could remain
 
 There are three distinct cases:

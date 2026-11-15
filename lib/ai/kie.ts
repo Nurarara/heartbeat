@@ -1,9 +1,9 @@
 // Server adapter only. Never import this module into a client component.
 // Kie.ai paints the picture; the Cloudflare director still decides what to paint.
 import jpeg from 'jpeg-js';
-import { finalImagePrompt, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
+import { finalImagePrompt, requiresDark, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
 import { boundedJson, jpegDimensions, ProviderFailure } from './cloudflare.ts';
-import { nightQuality } from './night-quality.ts';
+import { lightProblem } from './night-quality.ts';
 import { decodePng, isPng } from './png.ts';
 
 type Fetch = typeof fetch;
@@ -139,10 +139,8 @@ export function kieImageProvider(config: Config, fetcher: Fetch = fetch, options
       if (!download.ok) throw new ProviderFailure('upstream', download.status >= 500, download.status);
       const bytes = await asJpeg(await bytesOf(download, 15_000_000));
       const dimensions = jpegDimensions(bytes);
-      if (packet.context.phase === 'night') {
-        try { if (!nightQuality(bytes).acceptable) throw new Error('Night art was too bright.'); }
-        catch { const dark = new ProviderFailure('invalid-output', false); dark.hints = ['night-light']; throw dark; }
-      }
+      const light = lightProblem(bytes, requiresDark(packet), packet.rules.maximumMeanLight);
+      if (light) { const dim = new ProviderFailure('invalid-output', false); dim.hints = [light]; throw dim; }
       return { bytes, mime: 'image/jpeg' as const, ...dimensions };
     },
   };

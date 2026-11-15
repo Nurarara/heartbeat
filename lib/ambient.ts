@@ -1,6 +1,7 @@
 import { DEFAULT_PROFILE } from './world.ts';
 import type { Context, Place } from './world.ts';
 import { localPhase } from './pulse.ts';
+import { MOOD_IDS, type MoodId } from './moods.ts';
 
 export type AmbientPreferences = {
   version: 1;
@@ -10,6 +11,8 @@ export type AmbientPreferences = {
   reducedMotion: boolean;
   festiveTouches?: boolean;
   style?: 'surprise'|'anime'|'watercolour'|'cinematic'|'pencil'|'photographic';
+  /** The feeling to guide new pictures. Absent means auto. */
+  mood?: MoodId;
 };
 
 type AmbientScene = 'room' | 'city' | 'cosmos';
@@ -21,6 +24,13 @@ function boundedString(value: unknown, maximum: number): string | null {
   if (typeof value !== 'string' || value.length > maximum || /[\u0000-\u001f\u007f]/.test(value)) return null;
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+}
+
+/** Auto is stored as no mood at all, so older records stay valid. */
+export function withMood(preferences: AmbientPreferences, mood: MoodId): AmbientPreferences {
+  const next = { ...preferences };
+  if (mood === 'auto') delete next.mood; else next.mood = mood;
+  return next;
 }
 
 /** Read a deliberately small, versioned local-storage record; never trust stored JSON. */
@@ -44,9 +54,10 @@ export function parsePreferences(raw: string | null): AmbientPreferences | null 
     if ((data.unit !== 'c' && data.unit !== 'f') || typeof data.reducedMotion !== 'boolean') return null;
     if (data.festiveTouches !== undefined && typeof data.festiveTouches !== 'boolean') return null;
     if (data.style !== undefined && !['surprise','anime','watercolour','cinematic','pencil','photographic'].includes(String(data.style))) return null;
+    if (data.mood !== undefined && !(MOOD_IDS as readonly string[]).includes(String(data.mood))) return null;
     const location: Place = { name, country, timezone, latitude: p.latitude, longitude: p.longitude };
     if (admin1 !== undefined) location.admin1 = admin1;
-    return { version: 1, location, seed: data.seed, unit: data.unit, reducedMotion: data.reducedMotion, ...(typeof data.festiveTouches === 'boolean' ? { festiveTouches: data.festiveTouches } : {}),...(data.style?{style:data.style as AmbientPreferences['style']}:{}) };
+    return { version: 1, location, seed: data.seed, unit: data.unit, reducedMotion: data.reducedMotion, ...(typeof data.festiveTouches === 'boolean' ? { festiveTouches: data.festiveTouches } : {}),...(data.style?{style:data.style as AmbientPreferences['style']}:{}),...(data.mood&&data.mood!=='auto'?{mood:data.mood as MoodId}:{}) };
   } catch {
     return null;
   }
@@ -89,6 +100,7 @@ export function usableContext(context: Context | null, now: number): Context | n
     isDay: typeof context.isDay === 'boolean' ? context.isDay : null,
     sunrise: solarInstant(context.sunrise),
     sunset: solarInstant(context.sunset),
+    ...(typeof context.cloudCover === 'number' && context.cloudCover >= 0 && context.cloudCover <= 100 ? { cloudCover: context.cloudCover } : {}),
     stale: false,
   };
 }
