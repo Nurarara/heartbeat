@@ -26,7 +26,8 @@ export function directorSchema(packet: DirectorPacket) {
 /** Extra director instructions for the ingredient draw, the chosen mood and the real sky. */
 export function directorGuidance(packet: DirectorPacket): string {
   const lines: string[] = [];
-  if (packet.draw?.length) lines.push(`Random draw: packet.draw holds one randomly drawn word per group (subject, object, place, style, twist, viewpoint, palette). Build the picture from them. A REIMAGINE MUST clearly use at least ${packet.rules.minimumDrawnWords ?? 2} of the drawn words, and should use more when they fit. You MAY replace one drawn word if it truly clashes with the moment, the mood or night darkness. Reason about how the words can belong together in one coherent, beautiful scene for this exact moment; never just list them, and prefer the surprising reading over the safe one. The draw takes priority over inspiration. In usedWords, list the exact id of every drawn word your prompt really uses; a HOLD uses an empty usedWords.`);
+  if (packet.draw?.length) lines.push(`Random draw: packet.draw holds one randomly drawn word per group (subject, object, place, style, twist, viewpoint, palette). Build the picture from them. A REIMAGINE MUST clearly use at least ${packet.rules.minimumDrawnWords ?? 2} of the drawn words. Three or four that truly belong together make a stronger picture than all of them crowded in; leave out the ones that do not fit. You MAY replace one drawn word if it truly clashes with the moment, the mood or night darkness. Reason about how the words can belong together in one coherent, beautiful scene for this exact moment; never just list them, and prefer the surprising reading over the safe one. The draw takes priority over inspiration. In usedWords, list the exact id of every drawn word your prompt really uses; a HOLD uses an empty usedWords. In reason, say in one plain sentence why this scene suits this time, weather and mood; do not mention the draw or the words.`);
+  if (packet.draw?.length && requiresDark(packet)) lines.push('Darkness comes first. Open the prompt by describing a near-black picture, then the scene. Put every drawn style on a black ground (white or silver line on black, chalk on a blackboard, a single dim lamp) and treat any drawn colour as a few small glowing accents, never as a pale or bright background. No white paper, pale mist, bright sky or glowing fog.');
   if (packet.mood) lines.push(`Mood: ${packet.mood.instruction} The mood guides the feeling; the real time, weather and sky still shape the scene, and night darkness always wins over mood.`);
   if (packet.context.sky) lines.push('Sky: context.sky describes the real sun, moon and cloud right now in plain words. Let the light direction, shadow length and sky colour follow it. If the scene has no visible sky (indoors, underwater, deep space), carry its light and colour through instead. Show the moon only as described.');
   if (packet.rules.maximumLighting === 'soft') lines.push('Lighting now must be "soft" or "dark", never "daylight": keep the picture dim and low-key.');
@@ -58,6 +59,9 @@ export function parseModelDirection(value: unknown, packet: DirectorPacket, must
   return { action: data.action as ModelDirection['action'], title: data.title, reason: data.reason, prompt: data.prompt, lighting: data.lighting as ModelDirection['lighting'], themeIds: data.themeIds as string[], ...(usedWords ? { usedWords } : {}) };
 }
 
+/** Image models weigh the start of a prompt most, so darkness is stated first as well as last. */
+const DARK_LEAD='Very dark night picture, almost entirely black, low-key lighting and deep shadow. ';
+export const imageLead=(packet:DirectorPacket)=>requiresDark(packet)?DARK_LEAD:'';
 function imageConstraints(packet:DirectorPacket):string {
   const constraints = requiresDark(packet) ? ' Near-black restful wallpaper. Most pixels dark; tiny highlights only. No pale sky, white paper or large bright areas. For drawing, use faint graphite or charcoal on black paper. No text, logos or UI.'
     : packet.rules.maximumLighting === 'soft' ? ' Dim, low-key ambient wallpaper: deep shade and rich colour, only small soft light sources. No bright sky or large pale areas. No text, logos or UI.'
@@ -71,7 +75,7 @@ function imageConstraints(packet:DirectorPacket):string {
 export function withScreenFraming(packet:CreativePacket,framing:ScreenFraming|null|undefined):DirectorPacket {
   if(!framing)return packet;
   const result:DirectorPacket={...packet,context:{...packet.context,framing},rules:{...packet.rules}};
-  result.rules.maximumPromptCharacters=Math.min(packet.rules.maximumPromptCharacters,2048-imageConstraints(result).length);
+  result.rules.maximumPromptCharacters=Math.min(packet.rules.maximumPromptCharacters,2048-imageConstraints(result).length-imageLead(result).length);
   return result;
 }
 export function finalImagePrompt(direction: ModelDirection, packet: DirectorPacket): string {
@@ -79,5 +83,7 @@ export function finalImagePrompt(direction: ModelDirection, packet: DirectorPack
   const constraints=imageConstraints(packet);
   // Reserve space for application constraints without silently truncating the scene.
   if (direction.prompt.length + constraints.length > 2048) throw new Error('The image prompt needs shortening.');
-  return direction.prompt + constraints;
+  // The lead is dropped rather than failing a prompt planned before it existed.
+  const lead=imageLead(packet);
+  return (direction.prompt.length + constraints.length + lead.length > 2048 ? '' : lead) + direction.prompt + constraints;
 }

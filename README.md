@@ -97,7 +97,7 @@ Try it with the live test (about 0.8 Kie credits per picture with z-image; it st
 npm run live:test count=5 every=2 mood=dreamy
 ```
 
-Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
+In darkness only dark palettes are drawn and the image prompt opens with the darkness instruction. If a picture still comes back too bright, the live test dims it and keeps it instead of discarding a paid picture (`dim=off` restores the strict rejection; the account path still rejects). Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
 
 ## The public early-access site
 

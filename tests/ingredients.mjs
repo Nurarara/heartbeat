@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { INGREDIENTS, INGREDIENT_GROUPS, drawIngredients, ingredientWeight, validateIngredients, findTheme } from '../lib/ingredients.ts';
 import { MOODS, MOOD_IDS, parseMood } from '../lib/moods.ts';
 import { creativePacket, emptyCreativeMemory, parseCreativeMemory, rememberCreativeDisplay, recordCreativeFeedback, directorFingerprint } from '../lib/creative.ts';
-import { parseModelDirection, directorGuidance, directorSchema, finalImagePrompt, requiresDark, DIRECTOR_SCHEMA } from '../lib/director-contract.ts';
+import { parseModelDirection, directorGuidance, directorSchema, finalImagePrompt, imageLead, requiresDark, withScreenFraming, DIRECTOR_SCHEMA } from '../lib/director-contract.ts';
 import { parseStoryMemory, rememberMoment, planMoment } from '../lib/ambient-director.ts';
 import { cloudflareProvider, ProviderFailure } from '../lib/ai/cloudflare.ts';
 import { kieImageProvider, fitPrompt, KIE_MODELS } from '../lib/ai/kie.ts';
-import { lightProblem } from '../lib/ai/night-quality.ts';
+import { dimForNight, lightProblem, nightQuality } from '../lib/ai/night-quality.ts';
 import { skyCue } from '../lib/sky.ts';
 import { parsePreferences, withMood } from '../lib/ambient.ts';
 
@@ -58,6 +58,8 @@ assert.equal(parseCreativeMemory({ ...emptyCreativeMemory(), usage: { 'w-place-n
 const tagsOf = id => INGREDIENTS.find(item => item.id === id).tags, drawn = (options, group) => Array.from({ length: 500 }, (_, seed) => drawIngredients(undefined, seed + 1, at, options).find(word => word.group === group).id);
 assert.ok(drawn({}, 'palette').some(id => tagsOf(id).includes('bright')), 'Daytime may draw bright palettes');
 assert.ok(drawn({ dark: true }, 'palette').every(id => !tagsOf(id).includes('bright')), 'Night never draws a bright palette');
+assert.ok(drawn({ dark: true }, 'palette').every(id => tagsOf(id).includes('dark')), 'Darkness draws only dark palettes: pale ones make night pictures too bright');
+assert.ok(new Set(drawn({ dark: true }, 'palette')).size >= 12, 'There is still real variety among dark palettes');
 assert.ok(drawn({}, 'twist').some(id => tagsOf(id).includes('energetic')));
 assert.ok(drawn({ mood: 'sleep', dark: true }, 'twist').every(id => !tagsOf(id).includes('energetic')), 'Sleep never draws a high-energy twist');
 const share = (ids, tag) => ids.filter(id => tagsOf(id).includes(tag)).length / ids.length;
@@ -135,6 +137,32 @@ const painted = packetFor => kieImageProvider({ apiKey: 'k' }, async url => Stri
 await assert.rejects(painted(sleep), error => error instanceof ProviderFailure && error.hints.includes('night-light'), 'Sleep rejects a bright picture even at midday');
 await assert.rejects(painted(romantic), error => error.hints.includes('mood-light'));
 assert.equal((await kieImageProvider({ apiKey: 'k' }, async url => String(url).includes('createTask') ? Response.json({ code: 200, data: { taskId: 't1' } }) : String(url).includes('recordInfo') ? Response.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: ['https://files.example.test/a.jpg'] }) } }) : new Response(dim), { sleep: async () => {}, pollMs: 0 }).generate({ ...direction, lighting: 'soft' }, romantic)).mime, 'image/jpeg');
+// Darkness is stated first in the image prompt as well as last, and the director is told how to keep drawn words dark.
+const nightPacket = creativePacket({ ...night, mood: 'dreamy' }, undefined, 7, at, [], [], { ingredients: true }), darkDirection = { ...direction, lighting: 'dark' };
+assert.match(finalImagePrompt(darkDirection, nightPacket), /^Very dark night picture, almost entirely black.*A picture built from the drawn words\. Near-black restful wallpaper/);
+assert.equal(imageLead(packet), ''); assert.doesNotMatch(finalImagePrompt(direction, packet), /Very dark/);
+assert.match(directorGuidance(nightPacket), /Darkness comes first\. Open the prompt by describing a near-black picture/); assert.doesNotMatch(directorGuidance(packet), /Darkness comes first/);
+assert.match(directorGuidance(packet), /Three or four that truly belong together/); assert.match(directorGuidance(packet), /do not mention the draw or the words/);
+// The longest prompt the director may write always fits, on every screen shape, with the lead included.
+for (const framing of [undefined, { width: 390, height: 844, aspect: 'portrait' }, { width: 3440, height: 1440, aspect: 'ultrawide' }]) {
+  const framed = withScreenFraming(nightPacket, framing), longest = finalImagePrompt({ ...darkDirection, prompt: 'x'.repeat(framed.rules.maximumPromptCharacters) }, framed);
+  assert.ok(longest.length <= 2048 && longest.startsWith('Very dark night picture'), `budget for ${framing?.aspect || 'default'}`);
+}
+assert.ok(finalImagePrompt({ ...darkDirection, prompt: 'x'.repeat(1800) }, { ...nightPacket, rules: { ...nightPacket.rules, maximumPromptCharacters: 1800 } }).startsWith('x'), 'A prompt planned before the lead existed still works');
+const nightFit = fitPrompt({ ...darkDirection, prompt: 'A lantern-lit harbour at midnight with faint reflections. '.repeat(25).trim() }, nightPacket, KIE_MODELS['z-image'].promptLimit);
+assert.ok(nightFit.length <= 1000 && nightFit.startsWith('Very dark night picture') && /reflections\. Near-black restful wallpaper/.test(nightFit), 'Z-Image prompts keep both the lead and the closing constraints');
+// A paid picture that comes back too bright can be dimmed instead of thrown away (opt-in).
+const rescued = dimForNight(bright, true);
+assert.ok(rescued && rescued[0] === 255 && rescued[1] === 216, 'The dimmed picture is a JPEG'); assert.equal(lightProblem(rescued, true), null);
+assert.ok(nightQuality(rescued).samples.every(sample => sample.acceptable && sample.mean < .25));
+assert.equal(lightProblem(dimForNight(bright, false, .5), false, .5), null, 'A dim mood limit can be met the same way');
+assert.equal(dimForNight(new Uint8Array([1, 2, 3]), true), null, 'An unreadable picture cannot be rescued');
+const kieWith = options => kieImageProvider({ apiKey: 'k', ...options }, async url => String(url).includes('createTask') ? Response.json({ code: 200, data: { taskId: 't1' } }) : String(url).includes('recordInfo') ? Response.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: ['https://files.example.test/a.jpg'] }) } }) : new Response(bright), { sleep: async () => {}, pollMs: 0 });
+const kept = await kieWith({ dimTooBright: true }).generate(darkDirection, nightPacket);
+assert.equal(kept.dimmed, true); assert.equal(lightProblem(kept.bytes, true), null); assert.equal(kept.width, 1024);
+await assert.rejects(kieWith({}).generate(darkDirection, nightPacket), error => error.hints.includes('night-light'), 'Without the option a too-bright night picture is still rejected');
+const dimKept = await kieImageProvider({ apiKey: 'k', dimTooBright: true }, async url => String(url).includes('createTask') ? Response.json({ code: 200, data: { taskId: 't1' } }) : String(url).includes('recordInfo') ? Response.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: ['https://files.example.test/a.jpg'] }) } }) : new Response(dim), { sleep: async () => {}, pollMs: 0 }).generate(darkDirection, nightPacket);
+assert.equal('dimmed' in dimKept, false, 'A picture that is already dark enough is left untouched');
 // Prompts still fit the smallest image model, constraints intact.
 const long = { ...direction, lighting: 'soft', prompt: 'A velvet theatre of candle smoke and plum shadow. '.repeat(30).trim() };
 const fitted = fitPrompt(long, romantic, KIE_MODELS['z-image'].promptLimit); assert.ok(fitted.length <= 1000); assert.match(fitted, /Dim, low-key ambient wallpaper/);

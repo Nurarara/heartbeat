@@ -62,7 +62,8 @@ const place: Place = cityName === 'London'
 if (!place) { console.error(`Could not find "${cityName}".`); process.exit(1); }
 
 const director = cloudflareProvider({ accountId: env.CLOUDFLARE_ACCOUNT_ID, apiToken: env.CLOUDFLARE_API_TOKEN, directorModel: env.HEARTBEAT_DIRECTOR_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast', imageModel: '@cf/black-forest-labs/flux-1-schnell' });
-const painter = kieImageProvider({ apiKey: env.KIE_API_KEY, model });
+// A night picture that comes back too bright is dimmed and kept, so its credit is not wasted.
+const painter = kieImageProvider({ apiKey: env.KIE_API_KEY, model, dimTooBright: args.get('dim') !== 'off' });
 const outDir = args.get('out') ? path.resolve(args.get('out')!) : path.join(root, 'outputs', 'live', new Date().toISOString().replace(/[:.]/g, '-'));
 await mkdir(outDir, { recursive: true });
 
@@ -70,7 +71,7 @@ async function credits() {
   try { const r = await fetch('https://api.kie.ai/api/v1/chat/credit', { headers: { Authorization: `Bearer ${env.KIE_API_KEY}` } }); const d = await r.json() as { data?: number }; return typeof d.data === 'number' ? d.data : null; } catch { return null; }
 }
 
-type Frame = { n: number; file?: string; showAt?: number; time: string; date: string; temperature: number | null; weather: string; phase: string; mood: MoodId; fadeMs: number; sky?: string; words?: string[]; title?: string; reason?: string; prompt?: string; seconds?: number; error?: string; paid?: boolean };
+type Frame = { n: number; file?: string; showAt?: number; time: string; date: string; temperature: number | null; weather: string; phase: string; mood: MoodId; fadeMs: number; sky?: string; words?: string[]; title?: string; reason?: string; prompt?: string; seconds?: number; error?: string; paid?: boolean; dimmed?: boolean };
 const state = { place: `${place.name}, ${place.country}`, timezone: place.timezone, model, count, everyMinutes, mood: startMood as MoodId, moods: MOOD_IDS.map(id => ({ id, label: MOODS[id].label, colour: MOODS[id].colour })), frames: [] as Frame[], nextAt: 0, preparing: '' as MoodId | '', stopped: '', done: false, startCredits: await credits(), endCredits: null as number | null };
 let memory: StoryMemory | null = null;
 
@@ -113,6 +114,7 @@ async function attempt(n: number) {
     const attemptId = crypto.randomUUID();
     const proposal: CreativeProposal = { ...packet.inspiration[0], source: 'ai-director', id: `idea-${attemptId}`, fingerprint: `live-${n}-${directed.title.toLowerCase().replace(/[^a-z]+/g, '-')}`.slice(0, 200), title: directed.title, prompt: directed.prompt, themes: themes.map(({ id, label, category }) => ({ id, label, category })), lighting: directed.lighting };
     memory = rememberMoment(memory, { ...baseline, id: `generated-${attemptId}`, reason: directed.reason, artwork: { attemptId, url: `/api/ai/art/${attemptId}`, title: directed.title, proposal } }, Date.now());
+    if ('dimmed' in image) { frame.dimmed = true; console.log('   The picture came back too bright for this moment, so it was dimmed instead of thrown away.'); }
     console.log(`   Painted ${image.width}x${image.height} in ${frame.seconds}s -> ${path.relative(root, path.join(outDir, file))}`);
   } catch (error) {
     const kind = error instanceof ProviderFailure ? `${error.kind}${error.hints?.length ? ` (${error.hints.join(', ')})` : ''}` : (error as Error).message;

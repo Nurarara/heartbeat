@@ -181,7 +181,7 @@ export function creativePacket(context: CreativeContext, memory: CreativeMemory 
   const dark = limit.maximumLighting === 'dark';
   return {
     version: 1, context,
-    rules: { requiredLighting: dark ? 'dark' : 'appropriate to local phase', noText: true, maximumPromptCharacters: 1800, memoryCommitsAfterDisplay: true, ...limit, ...(options.ingredients ? { minimumDrawnWords: MINIMUM_DRAWN_WORDS } : {}) },
+    rules: { requiredLighting: dark ? 'dark' : 'appropriate to local phase', noText: true, maximumPromptCharacters: dark && options.ingredients ? 1700 : 1800, memoryCommitsAfterDisplay: true, ...limit, ...(options.ingredients ? { minimumDrawnWords: MINIMUM_DRAWN_WORDS } : {}) },
     ...(mood.id !== 'auto' ? { mood: { id: mood.id, instruction: mood.instruction } } : {}),
     ...(options.ingredients ? { draw: drawIngredients(memory, seed, at, { mood: mood.id, dark }) } : {}),
     memory: {

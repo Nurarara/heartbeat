@@ -1,9 +1,9 @@
 // Server adapter only. Never import this module into a client component.
 // Kie.ai paints the picture; the Cloudflare director still decides what to paint.
 import jpeg from 'jpeg-js';
-import { finalImagePrompt, requiresDark, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
+import { finalImagePrompt, imageLead, requiresDark, type DirectorPacket, type ModelDirection } from '../director-contract.ts';
 import { boundedJson, jpegDimensions, ProviderFailure } from './cloudflare.ts';
-import { lightProblem } from './night-quality.ts';
+import { dimForNight, lightProblem } from './night-quality.ts';
 import { decodePng, isPng } from './png.ts';
 
 type Fetch = typeof fetch;
@@ -20,7 +20,9 @@ export const DEFAULT_KIE_MODEL = 'z-image';
 /** True when Kie can paint: a key is present and the model is one of the tested ones. */
 export const kieConfigured = (env: { KIE_API_KEY?: string; HEARTBEAT_KIE_MODEL?: string }) => !!env.KIE_API_KEY?.trim() && (!env.HEARTBEAT_KIE_MODEL || Object.hasOwn(KIE_MODELS, env.HEARTBEAT_KIE_MODEL));
 
-type Config = { apiKey: string; model?: string };
+type Config = { apiKey: string; model?: string;
+  /** When a picture that must be dark comes back too bright, dim it instead of discarding a paid picture. */
+  dimTooBright?: boolean };
 type Options = { sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; pollMs?: number; deadlineMs?: number; now?: () => number };
 const API = 'https://api.kie.ai/api/v1';
 const HINTS = ['credit', 'balance', 'insufficient', 'nsfw', 'sensitive', 'prompt', 'model', 'aspect', 'size', 'timeout'];
@@ -36,11 +38,11 @@ const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, r
 export function fitPrompt(direction: ModelDirection, packet: DirectorPacket, limit: number): string {
   const full = finalImagePrompt(direction, packet);
   if (full.length <= limit) return full;
-  const constraints = full.slice(direction.prompt.length), room = limit - constraints.length;
+  const lead = full.startsWith(direction.prompt) ? '' : imageLead(packet), constraints = full.slice(lead.length + direction.prompt.length), room = limit - constraints.length - lead.length;
   if (room < 80) throw new ProviderFailure('configuration', false);
   const scene = direction.prompt.slice(0, room), sentence = scene.lastIndexOf('. ');
   const cut = sentence >= room * .5 ? scene.slice(0, sentence + 1) : scene.slice(0, Math.max(scene.lastIndexOf(' '), 1)).replace(/[,;:\s]+$/, '') + '.';
-  return cut + constraints;
+  return lead + cut + constraints;
 }
 
 function failure(kind: ProviderFailure['kind'], retryable: boolean, status?: number, code?: number, text = '') {
@@ -137,11 +139,15 @@ export function kieImageProvider(config: Config, fetcher: Fetch = fetch, options
       try { download = await fetcher(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000), redirect: 'follow' }); }
       catch { throw new ProviderFailure('upstream', true); }
       if (!download.ok) throw new ProviderFailure('upstream', download.status >= 500, download.status);
-      const bytes = await asJpeg(await bytesOf(download, 15_000_000));
+      let bytes = await asJpeg(await bytesOf(download, 15_000_000)), dimmed = false;
       const dimensions = jpegDimensions(bytes);
       const light = lightProblem(bytes, requiresDark(packet), packet.rules.maximumMeanLight);
-      if (light) { const dim = new ProviderFailure('invalid-output', false); dim.hints = [light]; throw dim; }
-      return { bytes, mime: 'image/jpeg' as const, ...dimensions };
+      if (light) {
+        const rescued = config.dimTooBright ? dimForNight(bytes, requiresDark(packet), packet.rules.maximumMeanLight) : null;
+        if (!rescued) { const dim = new ProviderFailure('invalid-output', false); dim.hints = [light]; throw dim; }
+        bytes = rescued; dimmed = true;
+      }
+      return { bytes, mime: 'image/jpeg' as const, ...dimensions, ...(dimmed ? { dimmed: true } : {}) };
     },
   };
 }

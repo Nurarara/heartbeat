@@ -22,3 +22,22 @@ export function lightProblem(bytes:Uint8Array,dark:boolean,ceiling?:number):'nig
  try{const quality=nightQuality(bytes);if(dark)return quality.acceptable?null:'night-light';return quality.samples[2].mean<=ceiling!?null:'mood-light';}
  catch{return dark?'night-light':'mood-light';}
 }
+
+/** Darkens a picture that broke a brightness limit until it passes, or returns null if it cannot.
+ * A gentle tone curve keeps small highlights readable while the whole picture sinks into shadow.
+ * The scene is unchanged; only its brightness is. Used instead of discarding a paid picture. */
+export function dimForNight(bytes:Uint8Array,dark:boolean,ceiling?:number):Uint8Array|null {
+ try{
+  const decoded=jpeg.decode(bytes,{useTArray:true,formatAsRGBA:true,tolerantDecoding:false,maxResolutionInMP:4,maxMemoryUsageInMB:48});
+  const gamma=dark?1.5:1.2,curve=Float64Array.from({length:256},(_,value)=>(value/255)**gamma),pixels=decoded.width*decoded.height;
+  let sum=0;for(let at=0;at<decoded.data.length;at+=4)sum+=.2126*curve[decoded.data[at]]+.7152*curve[decoded.data[at+1]]+.0722*curve[decoded.data[at+2]];
+  const mean=sum/pixels;
+  for(const target of dark?[.2,.14,.09]:[(ceiling??1)*.85,(ceiling??1)*.65]){
+   const gain=Math.min(1,target/Math.max(mean,.001)),table=Uint8Array.from(curve,value=>Math.round(255*value*gain)),data=new Uint8Array(decoded.data.length);
+   for(let at=0;at<data.length;at+=4){data[at]=table[decoded.data[at]];data[at+1]=table[decoded.data[at+1]];data[at+2]=table[decoded.data[at+2]];data[at+3]=255;}
+   const dimmed=new Uint8Array(jpeg.encode({data,width:decoded.width,height:decoded.height},88).data);
+   if(!lightProblem(dimmed,dark,ceiling))return dimmed;
+  }
+ }catch{/* An unreadable picture cannot be rescued. */}
+ return null;
+}

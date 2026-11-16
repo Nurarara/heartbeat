@@ -122,9 +122,9 @@ export function ingredientWeight(item: Ingredient, memory: CreativeMemory | unde
   let value = 1;
   // Light safety only: darkness forbids bright palettes; a mood may forbid or favour tags.
   if (item.category === 'palette') {
-    if (options.dark && item.tags.includes('bright')) return 0;
+    // In darkness only dark palettes are drawn: a pale palette is what makes a night picture too bright.
+    if (options.dark && !item.tags.includes('dark')) return 0;
     for (const tag of item.tags) if (tag in mood.palette) value *= mood.palette[tag];
-    if (options.dark && item.tags.includes('dark')) value *= 2;
   }
   if (item.category === 'twist') for (const tag of item.tags) if (tag in mood.twist) value *= mood.twist[tag];
   if (!value) return 0;
