@@ -99,6 +99,10 @@ npm run live:test count=5 every=2 mood=dreamy
 
 Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
 
+## The public early-access site
+
+`npm run site:export` builds a static site into `outputs/heartbeat-site` for free hosting (Cloudflare Pages): a landing page, the prepared demo, and a short "city, mood, preview" taste that ends in an early-access email address. `npm run site:preview` serves it locally with the same security headers. It has no accounts, payments or AI calls and collects nothing. The preview shows prepared example artwork, labelled as such; only the city's clock, the temperature and the sky description are live. Its only outbound requests are the visitor's city search and current temperature from Open-Meteo, whose terms for commercial use still need review before the product is sold.
+
 ## Why old pictures could remain
 
 There are three distinct cases:

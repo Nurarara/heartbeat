@@ -70,8 +70,8 @@ async function credits() {
   try { const r = await fetch('https://api.kie.ai/api/v1/chat/credit', { headers: { Authorization: `Bearer ${env.KIE_API_KEY}` } }); const d = await r.json() as { data?: number }; return typeof d.data === 'number' ? d.data : null; } catch { return null; }
 }
 
-type Frame = { n: number; file?: string; showAt?: number; time: string; date: string; temperature: number | null; weather: string; phase: string; mood: MoodId; fadeMs: number; sky?: string; words?: string[]; title?: string; reason?: string; prompt?: string; seconds?: number; error?: string };
-const state = { place: `${place.name}, ${place.country}`, timezone: place.timezone, model, count, everyMinutes, mood: startMood as MoodId, moods: MOOD_IDS.map(id => ({ id, label: MOODS[id].label, colour: MOODS[id].colour })), frames: [] as Frame[], nextAt: 0, preparing: '' as MoodId | '', done: false, startCredits: await credits(), endCredits: null as number | null };
+type Frame = { n: number; file?: string; showAt?: number; time: string; date: string; temperature: number | null; weather: string; phase: string; mood: MoodId; fadeMs: number; sky?: string; words?: string[]; title?: string; reason?: string; prompt?: string; seconds?: number; error?: string; paid?: boolean };
+const state = { place: `${place.name}, ${place.country}`, timezone: place.timezone, model, count, everyMinutes, mood: startMood as MoodId, moods: MOOD_IDS.map(id => ({ id, label: MOODS[id].label, colour: MOODS[id].colour })), frames: [] as Frame[], nextAt: 0, preparing: '' as MoodId | '', stopped: '', done: false, startCredits: await credits(), endCredits: null as number | null };
 let memory: StoryMemory | null = null;
 
 async function attempt(n: number) {
@@ -92,7 +92,15 @@ async function attempt(n: number) {
       memory?.history.map(item => item.direction.scene) || [],
       memory?.history.map(item => ({ title: item.direction.artwork?.title || item.direction.scene, summary: item.direction.artwork?.proposal.prompt || item.direction.brief.activity, phase: item.direction.phase })) || [], { ingredients: true });
     console.log(`   Drawn words: ${packet.draw!.map(word => word.label).join(' + ')}`);
-    const directed = await director.direct(packet, { mustReimagine: true, signal: AbortSignal.timeout(120000) });
+    // The director's reply is checked before any picture is painted. A reply that breaks the rules is asked
+    // for once more: that costs no Kie credit, where giving up would waste this picture's slot.
+    let directed;
+    try { directed = await director.direct(packet, { mustReimagine: true, signal: AbortSignal.timeout(120000) }); }
+    catch (error) {
+      if (!(error instanceof ProviderFailure) || error.kind !== 'invalid-output') throw error;
+      console.log(`   The director's first answer broke a rule (${error.hints?.join(', ') || 'unknown'}); asking once more.`);
+      directed = await director.direct(packet, { mustReimagine: true, signal: AbortSignal.timeout(120000) });
+    }
     frame.title = directed.title; frame.reason = directed.reason; frame.prompt = directed.prompt;
     frame.words = (directed.usedWords || []).map(id => packet.draw!.find(word => word.id === id)!.label);
     console.log(`   Director: "${directed.title}" (${directed.reason})`);
@@ -109,7 +117,8 @@ async function attempt(n: number) {
   } catch (error) {
     const kind = error instanceof ProviderFailure ? `${error.kind}${error.hints?.length ? ` (${error.hints.join(', ')})` : ''}` : (error as Error).message;
     frame.error = kind.includes('night-light') ? 'Too bright for night, so it was rejected. Your screen keeps the previous picture.' : kind.includes('mood-light') ? 'Too bright for this mood or twilight, so it was rejected. Your screen keeps the previous picture.' : kind.includes('words') ? 'The director did not use enough of the drawn words, so this one was skipped.' : `Could not make this one: ${kind}`;
-    console.log(`   ${frame.error}`);
+    frame.paid = /light/.test(kind);
+    console.log(`   ${frame.error}${frame.paid ? ' (This one used a Kie credit.)' : ' (No Kie credit used.)'}`);
   }
   await writeFile(path.join(outDir, 'log.json'), JSON.stringify(state, null, 2));
 }
@@ -138,7 +147,9 @@ body.awake .info{opacity:1}.info b{font-size:20px;letter-spacing:-.04em}
 body.awake .reading{opacity:.14;transition:opacity .5s ease}
 body::after{content:'';position:fixed;inset:auto 0 0 0;height:46vh;background:linear-gradient(180deg,transparent,#05080cd9);opacity:0;transition:opacity .6s;pointer-events:none}
 body.awake::after{opacity:1}
-.info,.why,.moods,.next{z-index:2}
+.info,.why,.moods,.next,.trouble{z-index:2}
+.trouble{position:fixed;right:24px;top:46px;max-width:min(460px,calc(100% - 48px));margin:0;text-align:right;font-size:12.5px;line-height:1.45;color:#ffc9bd;text-shadow:0 1px 10px #000;opacity:0;transition:opacity .6s}
+body.awake .trouble{opacity:1}
 body.awake .why{opacity:1}
 .wait{position:fixed;inset:0;display:grid;place-items:center;color:#9ba2a9;font-size:14px;letter-spacing:.04em}
 /* Mood chips: hidden until the mouse moves or the screen is touched, then fade away again. */
@@ -154,7 +165,7 @@ body.awake .next,.moods:focus-within~.next{opacity:1}
 <body><div class="art" id="art"></div>
 <div class="reading br" id="clockbox" hidden><time id="time"></time></div><div class="reading tl" id="tempbox" hidden><span id="temp"></span></div>
 <div class="info"><span><b>heartbeat</b>&nbsp; live test</span><span id="status"></span></div><p class="why" id="why"></p>
-<div class="moods" id="moods" role="group" aria-label="Mood for the next picture"></div><p class="next" id="next" role="status"></p>
+<div class="moods" id="moods" role="group" aria-label="Mood for the next picture"></div><p class="next" id="next" role="status"></p><p class="trouble" id="trouble" role="status"></p>
 <div class="wait" id="wait">Reading the weather and preparing the first picture…</div>
 <script>
 const $=id=>document.getElementById(id);let shown='',temp=null,wake=0;const preloaded=new Set();
@@ -200,7 +211,9 @@ async function tick(){let s;try{s=await (await fetch('/state',{cache:'no-store'}
   build(s);
   const due=s.frames.filter(f=>f.file&&f.showAt&&f.showAt<=Date.now()).at(-1),ready=s.frames.filter(f=>f.file).length;
   const left=s.done?'finished':s.nextAt?'next in '+Math.max(0,Math.round((s.nextAt-Date.now())/1000))+'s':'preparing';
-  $('status').textContent=s.place+' · '+ready+' of '+s.count+' ready · '+left;
+  const failed=s.frames.filter(f=>f.error);
+  $('status').textContent=s.place+' · '+ready+' of '+s.count+' ready'+(failed.length?' · '+failed.length+' skipped':'')+' · '+left;
+  $('trouble').textContent=failed.length?(s.stopped?s.stopped+' ':'')+'Last skipped picture: '+failed.at(-1).error:'';
   if(due&&due.file!==shown)await show(due);
   for(const f of s.frames)if(f.file&&f.file!==shown&&!preloaded.has(f.file)){preloaded.add(f.file);const p=new Image();p.src='/img/'+f.file;}
 }
@@ -241,7 +254,12 @@ for (let n = 1; n <= count; n++) {
   state.preparing = '';
   const frame = state.frames.at(-1)!;
   // A failed picture gives up its slot; the next one is prepared for the following slot.
-  if (!frame.file) { if (lastShown) { lastShown += everyMinutes * 60000; state.nextAt = lastShown + everyMinutes * 60000; } continue; }
+  if (!frame.file) {
+    // Two failures in a row: stop instead of spending more credits on the same problem.
+    if (state.frames.at(-2)?.error) { state.stopped = 'Stopped early after two pictures in a row could not be made, to protect your credits.'; console.log(`\n${state.stopped}`); break; }
+    if (lastShown) { lastShown += everyMinutes * 60000; state.nextAt = lastShown + everyMinutes * 60000; }
+    continue;
+  }
   const showAt = lastShown ? Math.max(lastShown + everyMinutes * 60000, Date.now()) : Date.now();
   state.nextAt = showAt; frame.showAt = showAt;
   if (showAt > Date.now() + 1000) console.log(`   Ready early; it will appear at ${new Date(showAt).toLocaleTimeString('en-GB', { timeZone: place.timezone })}.`);
