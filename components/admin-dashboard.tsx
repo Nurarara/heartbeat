@@ -11,6 +11,7 @@ type Overview = {
   budget: { capMicros: number; spentMicros: number; reservedMicros: number; attempts: number; imageEstimateMicros: number; painter: string };
   testers: Tester[]; series: { day: string; seconds: number; viewers: number; sessions: number; pictures: number }[];
   hourly: { hour: number; seconds: number }[]; moods: { mood: string; seconds: number }[]; devices: { device: string; seconds: number; sessions: number }[];
+  jobs: { id: string; email: string; status: string; reason: string | null; created_at: number; updated_at: number }[];
   liveNow: Session[]; sessions: Session[]; activity: { kind: string; email: string; detail: string; created_at: number }[];
 };
 
@@ -27,6 +28,7 @@ const clock = (at: number) => new Date(at).toLocaleString('en-GB', { day: 'numer
 const shortDay = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const money = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
 const moodLabel = (mood: string | null) => mood ? MOODS[parseMood(mood)].label : '—';
+const JOB: Record<string, string> = { ready: 'Ready', done: 'Ready', held: 'Kept current', failed: 'Failed', outcome_unknown: 'Failed', canceled: 'Cancelled' };
 const KIND: Record<string, string> = { joined: 'joined the test', sign_in: 'signed in', code_sent: 'asked for a code', not_invited: 'tried to sign in (not invited)', screen_open: 'opened a screen', mood: 'changed mood', invited: 'was invited', removed: 'was removed' };
 
 type Bar = { label: string; value: number; tip: string };
@@ -138,6 +140,12 @@ export function AdminDashboard() {
             <td>{t.joined_at ? clock(t.joined_at) : '—'}</td><td title={t.last_seen ? clock(t.last_seen) : ''}>{ago(t.last_seen, now)}</td><td className="ad-num">{t.sessions}</td><td className="ad-num">{duration(t.seconds)}</td><td className="ad-num">{duration(t.seconds_today)}</td><td className="ad-num">{duration(t.sessions ? t.seconds / t.sessions : 0)}</td><td className="ad-num">{t.pictures}{t.pictures_today ? <small> +{t.pictures_today} today</small> : null}</td><td>{moodLabel(t.mood)}</td><td>{t.device || '—'}</td>
             <td>{t.note !== 'You (owner)' && <button className="ad-icon" aria-label={`Remove ${t.email}`} title="Remove from test" disabled={busy} onClick={() => void remove(t.email)}><Trash2 size={14} /></button>}</td></tr>;
         })}</tbody></table></div>
+    </section>
+
+    <section className="ad-card"><header><h2>Recent pictures</h2><span className="ad-sub">{data.jobs.filter(j => j.status === 'failed' || j.status === 'outcome_unknown').length} failed of the last {data.jobs.length}</span></header>
+      {data.jobs.length ? <div className="ad-scroll"><table className="ad-table"><thead><tr><th>Asked</th><th>Person</th><th>Result</th><th className="ad-num">Took</th><th>Why it failed</th></tr></thead><tbody>
+        {data.jobs.map(j => { const result = JOB[j.status] || j.status; return <tr key={j.id}><td>{clock(j.created_at)}</td><td>{j.email}</td><td><span className="ad-status" data-status={result === 'Ready' ? 'joined' : result === 'Failed' ? 'failed' : 'invited'}>{result}</span></td><td className="ad-num">{duration((j.updated_at - j.created_at) / 1000)}</td><td className="ad-reason">{j.status === 'failed' || j.status === 'outcome_unknown' ? (j.reason || 'no reason recorded') : j.reason && j.status !== 'ready' && j.status !== 'done' ? `waiting: ${j.reason}` : ''}</td></tr>; })}
+      </tbody></table></div> : <p className="ad-empty">No pictures asked for yet.</p>}
     </section>
 
     <div className="ad-grid-2">

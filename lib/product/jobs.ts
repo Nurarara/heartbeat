@@ -190,7 +190,10 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
   if(error instanceof ProviderFailure)console.warn('Heartbeat artwork provider rejected',{jobId:job.id,stage:job.status,category:error.kind,status:error.status,code:error.code,hints:error.hints});
   for(const op of operations.results)await settleProviderOperation(env,op.id,ambiguous?'unknown':'failed',now(),error instanceof ProviderFailure?error.kind:'interrupted');
   if(!ambiguous)await settleUsage(env,job.id,'release',now());
-  const state=ambiguous?'outcome_unknown':'failed';await transition(env,job,claim,state,{error:state,result:JSON.stringify({status:'failed',jobState:state,reason:ambiguous?'The provider outcome is unknown. No automatic repeat will be made.':'This picture could not be prepared. Your current artwork is kept.'})},now());
+  // Record where and why (fixed vocabulary only: provider text can echo the prompt) so the owner can see it.
+  const reason=error instanceof ProviderFailure?`${error.kind}${error.status?` ${error.status}`:''}${error.hints?.length?` (${error.hints.join(', ')})`:''}`:error instanceof ProductError?`product ${error.status}`:error instanceof Error&&/^[a-z_]+$/.test(error.message)?error.message:'internal';
+  console.warn('Heartbeat picture failed',{jobId:job.id,stage:job.status,reason,...(error instanceof ProviderFailure||error instanceof ProductError?{}:{message:String(error instanceof Error?error.message:error).slice(0,300)})});
+  const state=ambiguous?'outcome_unknown':'failed';await transition(env,job,claim,state,{error:`${state}: ${job.status} · ${reason}`.slice(0,160),result:JSON.stringify({status:'failed',jobState:state,reason:ambiguous?'The provider outcome is unknown. No automatic repeat will be made.':'This picture could not be prepared. Your current artwork is kept.'})},now());
   if(!ambiguous)await reconcileKnownOperations(env,{...job,status:'failed'},now());
   if(!ambiguous)await database.prepare("UPDATE ai_attempts SET status='failed',error='preparation_failed' WHERE id=? AND status NOT IN ('ready','displayed')").bind(job.id).run();
   return {completed:true};

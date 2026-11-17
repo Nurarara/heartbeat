@@ -30,3 +30,4 @@
 .ad-empty{color:var(--ad-muted);font-size:13px;padding:12px 0}.ad-foot{color:var(--ad-muted);font-size:11.5px;margin-top:20px!important}
 @media (max-width:640px){.ad-breakdown li{grid-template-columns:76px 1fr auto}.ad-feed li{grid-template-columns:1fr}.ad-stat strong{font-size:24px}}
 .ad-chart-empty{min-height:150px;display:grid;place-content:center;text-align:center}
+.ad-status[data-status=failed]::before{background:#e66767}.ad-reason{white-space:normal!important;min-width:220px;color:var(--ad-muted)!important;font-size:12px}

@@ -195,6 +195,7 @@ export async function overview(env: ProductEnv, now: number, params: URLSearchPa
   const devices = await all(`SELECT device, SUM(seconds) AS seconds, COUNT(*) AS sessions FROM hb_view_sessions WHERE started_at>=? GROUP BY device ORDER BY seconds DESC`, since);
   const liveNow = await all(`SELECT v.id,u.email,v.device,v.mood,v.started_at,v.last_seen,v.seconds FROM hb_view_sessions v JOIN hb_users u ON u.id=v.user_id WHERE v.last_seen>=? ORDER BY v.started_at`, live);
   const sessions = await all(`SELECT v.id,u.email,v.device,v.mood,v.started_at,v.last_seen,v.seconds FROM hb_view_sessions v JOIN hb_users u ON u.id=v.user_id WHERE v.seconds>0 OR v.last_seen>=? ORDER BY v.last_seen DESC LIMIT 40`, live);
+  const jobs = await all(`SELECT j.id,u.email,j.status,j.error_category AS reason,j.created_at,j.updated_at FROM hb_jobs j JOIN hb_users u ON u.id=j.owner ORDER BY j.created_at DESC LIMIT 30`);
   const activity = await all(`SELECT kind,email,detail,created_at FROM hb_activity ORDER BY created_at DESC LIMIT 60`);
   const utcDay = new Date(now).toISOString().slice(0, 10);
   const spend = await all(`SELECT day, spent_micros, reserved_micros, attempts FROM hb_operating_days WHERE day>=? ORDER BY day`, new Date(since).toISOString().slice(0, 10));
@@ -207,7 +208,7 @@ export async function overview(env: ProductEnv, now: number, params: URLSearchPa
     generatedAt: now, days, seats: betaSeats(env), beta: betaMode(env), cadenceMinutes: betaCadence(env) / 60000, dailyPicturesPerTester: betaDailyPictures(env),
     budget: { capMicros: Number(env.HEARTBEAT_DAILY_BUDGET_MICROS) || 0, spentMicros: Number(today?.spent_micros || 0), reservedMicros: Number(today?.reserved_micros || 0), attempts: Number(today?.attempts || 0), imageEstimateMicros: Number(env.HEARTBEAT_IMAGE_ESTIMATE_MICROS) || 0, painter: env.HEARTBEAT_IMAGE_PROVIDER || 'cloudflare', history: spend },
     testers, series, hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, seconds: Number(hourly.find(row => Number(row.hour) === hour)?.seconds || 0) })),
-    moods, devices, liveNow, sessions, activity,
+    moods, devices, liveNow, sessions, activity, jobs,
   };
 }
 
