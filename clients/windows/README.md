@@ -30,7 +30,12 @@ The second rebuilds and starts the site so the download is served. Neither file 
   mouse move or key closes it. While it shows, it asks the server for new pictures (`showing=1`)
   and reports watch time. Plugged in, it keeps the display on like a picture frame; on battery the
   display sleeps as normal (can be turned off in the menu).
-- **Icon by the clock**: mood, show Heartbeat now, pause new pictures for an hour, when the
+- **Wallpaper** (on by default): the newest picture fills the desktop. While someone is using the
+  computer it asks for a new picture every 30 minutes (60 on battery); nothing is made while the
+  computer is locked or idle. Pictures made by the screensaver also become the wallpaper. Turning it
+  off (or uninstalling) puts the previous wallpaper back.
+- **Straight after sign-in** it starts a picture, sets the wallpaper and shows Heartbeat full-screen once.
+- **Icon by the clock**: mood, show Heartbeat now, use as wallpaper, pause new pictures for an hour, when the
   screensaver starts (2–30 minutes), keep the screen on while plugged in, open the studio, check
   for updates, sign out, uninstall, quit.
 - **Background**: every 15 minutes (30 on battery) it quietly fetches the latest picture so the

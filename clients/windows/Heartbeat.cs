@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.0.0";
+ public const string Version = "1.1.0";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -107,6 +107,10 @@ class Settings {
  public string Server = App.DefaultServer;
  public int IdleMinutes = 5;
  public bool KeepScreenOn = true;
+ public bool Wallpaper = true;
+ public string PreviousWallpaper, WallpaperId = "";
+ public bool SavedWallpaper;
+ public long LastWallpaperRequest;
  public long PausedUntil;
  public string PreviousSaver, PreviousActive, PreviousTimeout;
  public bool SavedPrevious;
@@ -238,6 +242,12 @@ static class Render {
 }
 
 static class Native {
+ [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, string pv, uint winIni);
+ public const uint SetDeskWallpaper = 20;
+ [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+ [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+ /// Minutes since the last mouse or keyboard input.
+ public static double IdleMinutes() { var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO)) }; if (!GetLastInputInfo(ref info)) return 0; return unchecked((uint)Environment.TickCount - info.dwTime) / 60000.0; }
  [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
  public const uint Continuous = 0x80000000, SystemRequired = 0x1, DisplayRequired = 0x2;
  [DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, IntPtr pv, uint winIni);
@@ -251,11 +261,36 @@ static class Native {
  public static string ShortPath(string path) { var sb = new StringBuilder(260); int n = GetShortPathName(path, sb, sb.Capacity); return n > 0 && n < sb.Capacity ? sb.ToString() : path; }
 }
 
+/// The desktop wallpaper: the newest picture, filling every screen.
+static class Wallpaper {
+ const string Desktop = @"Control Panel\Desktop";
+ /// Windows caches a wallpaper by file name, so alternate between two files to make each change show.
+ public static void Apply(Settings settings) {
+  if (!File.Exists(App.PicturePath)) return;
+  using (var d = Registry.CurrentUser.CreateSubKey(Desktop)) {
+   if (!settings.SavedWallpaper) { settings.PreviousWallpaper = Convert.ToString(d.GetValue("Wallpaper", "")); settings.SavedWallpaper = true; }
+   d.SetValue("WallpaperStyle", "10"); d.SetValue("TileWallpaper", "0"); // Fill
+  }
+  string a = Path.Combine(App.DataDir, "wallpaper-a.jpg"), b = Path.Combine(App.DataDir, "wallpaper-b.jpg");
+  string target = File.Exists(a) && (!File.Exists(b) || File.GetLastWriteTimeUtc(a) > File.GetLastWriteTimeUtc(b)) ? b : a;
+  File.Copy(App.PicturePath, target, true); File.SetLastWriteTimeUtc(target, DateTime.UtcNow);
+  Native.SystemParametersInfo(Native.SetDeskWallpaper, 0, target, Native.UpdateIni | Native.SendChange);
+  settings.WallpaperId = App.Str(Cache.Info(), "id"); settings.Save();
+ }
+ public static void Restore(Settings settings) {
+  if (!settings.SavedWallpaper) return;
+  string previous = settings.PreviousWallpaper ?? "";
+  if (previous.IndexOf(@"\Heartbeat\", StringComparison.OrdinalIgnoreCase) >= 0 || (previous != "" && !File.Exists(previous))) previous = "";
+  Native.SystemParametersInfo(Native.SetDeskWallpaper, 0, previous, Native.UpdateIni | Native.SendChange);
+  settings.SavedWallpaper = false; settings.WallpaperId = ""; settings.Save();
+ }
+}
+
 /// Installs into the user's own folder (no admin needed), sets the screensaver, starts with Windows, and undoes all of it.
 static class Installer {
  const string Desktop = @"Control Panel\Desktop", RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Heartbeat";
  public static void Install() {
-  var answer = MessageBox.Show("Heartbeat will:\n\n•  become your screensaver (after 5 minutes idle)\n•  start quietly with Windows, with a small icon by the clock\n•  ask for the email you were invited with\n\nYou can change or remove it any time from the icon or Windows Settings → Apps.", "Install Heartbeat", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+  var answer = MessageBox.Show("Heartbeat will:\n\n•  become your wallpaper, with a new picture every half hour while you use the computer\n•  become your screensaver (after 5 minutes idle)\n•  start quietly with Windows, with a small icon by the clock\n•  ask for the email you were invited with\n\nYou can change or remove it any time from the icon or Windows Settings → Apps.", "Install Heartbeat", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
   if (answer != DialogResult.OK) return;
   StopRunningCopies();
   Directory.CreateDirectory(App.InstallDir);
@@ -304,6 +339,7 @@ static class Installer {
   }
   try { using (var run = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (run != null) run.DeleteValue("Heartbeat", false); } catch { }
   try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
+  try { Wallpaper.Restore(settings); } catch { }
   StartMenuShortcut(false); Settings.SetToken("");
   StopRunningCopies();
   // A running program can't delete itself: a short-lived command removes the folders once this exits.
@@ -358,21 +394,35 @@ class TrayContext : ApplicationContext {
   icon.Icon = Render.TrayIcon(); icon.Text = "Heartbeat"; icon.Visible = true;
   icon.ContextMenuStrip = new ContextMenuStrip(); icon.ContextMenuStrip.Opening += (s, e) => BuildMenu();
   icon.MouseUp += (s, e) => { if (e.Button == MouseButtons.Left) { if (Settings.Token() == "") SignIn(); else typeof(NotifyIcon).GetMethod("ShowContextMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(icon, null); } };
+  Microsoft.Win32.SystemEvents.SessionSwitch += (s, e) => { locked = e.Reason == SessionSwitchReason.SessionLock; if (!locked) Tick(false); };
   timer.Tick += (s, e) => Tick(false);
   timer.Interval = 60000; timer.Start();
-  if (Settings.Token() == "") SignIn(); else { Tick(true); if (welcome) Say("Heartbeat is your screensaver now. It appears after " + settings.IdleMinutes + " minutes idle."); }
+  if (Settings.Token() == "") SignIn(); else { Tick(true); if (welcome) Say("Heartbeat is your wallpaper and screensaver now."); }
  }
 
  void Say(string text) { icon.BalloonTipTitle = "Heartbeat"; icon.BalloonTipText = text; icon.ShowBalloonTip(5000); }
 
- /// Keeps the cached picture fresh without making new ones (only a visible screensaver asks for those).
- int ticks;
+ /// Every minute: keep the wallpaper current, and keep the cached picture fresh for the screensaver.
+ /// The wallpaper asks for a new picture every 30 minutes (60 on battery), only while someone is using the computer.
+ int ticks; bool locked;
  async void Tick(bool now) {
   ticks++;
-  int every = App.OnMains ? 15 : 30; // minutes
-  if (busy || (!now && ticks % every != 0) || Settings.Token() == "") { await CheckUpdates(false); return; }
+  if (busy || Settings.Token() == "") { await CheckUpdates(false); return; }
   busy = true;
-  try { state = await Cache.Refresh(settings, false); if (state == null) SignIn(); }
+  try {
+   long since = DateTime.UtcNow.Ticks - settings.LastWallpaperRequest;
+   bool someoneHere = !locked && Native.IdleMinutes() < 10;
+   bool wantPicture = settings.Wallpaper && !settings.Paused && someoneHere && since > TimeSpan.FromMinutes(App.OnMains ? 30 : 60).Ticks;
+   if (now || wantPicture || ticks % (App.OnMains ? 15 : 30) == 0) {
+    state = await Cache.Refresh(settings, wantPicture);
+    if (state == null) { SignIn(); return; }
+    if (wantPicture) { settings.LastWallpaperRequest = DateTime.UtcNow.Ticks; settings.Save(); }
+    // While a new picture is being made, look again next minute.
+    if (App.Truthy(state, "making")) settings.LastWallpaperRequest = DateTime.UtcNow.Ticks - TimeSpan.FromMinutes(App.OnMains ? 29 : 59).Ticks;
+   }
+   // A new picture (from the wallpaper or the screensaver) becomes the wallpaper.
+   if (settings.Wallpaper && App.Str(Cache.Info(), "id") != "" && App.Str(Cache.Info(), "id") != settings.WallpaperId) Wallpaper.Apply(settings);
+  }
   catch (ApiError e) { if (e.Status == 401) { Say("Please sign in to Heartbeat again."); SignIn(); } }
   catch { }
   finally { busy = false; }
@@ -387,10 +437,18 @@ class TrayContext : ApplicationContext {
   } catch (Exception e) { if (force) Say(e.Message); }
  }
 
+ void ShowNow() { try { Process.Start(new ProcessStartInfo(File.Exists(App.ScrPath) ? App.ScrPath : Application.ExecutablePath, "/s") { UseShellExecute = false }); } catch (Exception x) { Say(x.Message); } }
+
  void SignIn() {
   if (Application.OpenForms.OfType<SignInForm>().Any()) { Application.OpenForms.OfType<SignInForm>().First().Activate(); return; }
   var form = new SignInForm(settings);
-  form.FormClosed += (s, e) => { if (Settings.Token() != "") { Tick(true); Say("You're in. Heartbeat appears after " + settings.IdleMinutes + " minutes idle. Right-click this icon for moods and settings."); } };
+  form.FormClosed += async (s, e) => {
+   if (Settings.Token() == "") return;
+   // Straight away: start a picture, make it the wallpaper, and show Heartbeat full-screen once.
+   try { state = await Cache.Refresh(settings, true); settings.LastWallpaperRequest = DateTime.UtcNow.Ticks; settings.Save(); if (settings.Wallpaper) Wallpaper.Apply(settings); } catch { }
+   Say("You're in. Heartbeat is your wallpaper and screensaver. Move the mouse to close it; right-click this icon for moods and settings.");
+   await Task.Delay(1500); ShowNow();
+  };
   form.Show(); form.Activate();
  }
 
@@ -413,7 +471,10 @@ class TrayContext : ApplicationContext {
     }
    } else moods.DropDownItems.Add(new ToolStripMenuItem("Loading…") { Enabled = false });
    m.Items.Add(moods);
-   m.Items.Add("Show Heartbeat now", null, (s, e) => { try { Process.Start(new ProcessStartInfo(File.Exists(App.ScrPath) ? App.ScrPath : Application.ExecutablePath, "/s") { UseShellExecute = false }); } catch (Exception x) { Say(x.Message); } });
+   m.Items.Add("Show Heartbeat now", null, (s, e) => ShowNow());
+   var wall = new ToolStripMenuItem("Use as wallpaper") { Checked = settings.Wallpaper };
+   wall.Click += (s, e) => { try { settings.Wallpaper = !settings.Wallpaper; settings.Save(); if (settings.Wallpaper) { Wallpaper.Apply(settings); Tick(false); } else Wallpaper.Restore(settings); } catch (Exception x) { Say(x.Message); } };
+   m.Items.Add(wall);
    if (settings.Paused) m.Items.Add("Resume new pictures", null, (s, e) => { settings.PausedUntil = 0; settings.Save(); Say("New pictures are back on."); });
    else m.Items.Add("Pause new pictures for 1 hour", null, (s, e) => { settings.PausedUntil = DateTime.UtcNow.AddHours(1).Ticks; settings.Save(); Say("Paused for an hour. The screensaver still shows your latest picture."); });
    var after = new ToolStripMenuItem("Screensaver starts after");
