@@ -15,7 +15,7 @@ if(mode==='build'){
  const env={...process.env,...vars()};
  if(!env.HEARTBEAT_ANDROID_KEYSTORE)throw new Error('Add HEARTBEAT_ANDROID_KEYSTORE and HEARTBEAT_ANDROID_KEYSTORE_PASSWORD to .dev.vars (see clients/android/README.md).');
  const gradlew=process.platform==='win32'?'gradlew.bat':'./gradlew';
- const r=spawnSync(gradlew,['--no-daemon','-q','assembleRelease'],{cwd:'clients/android',env,stdio:'inherit',shell:process.platform==='win32'});
+ const r=spawnSync(gradlew,['--no-daemon','-q','assembleRelease','bundleRelease'],{cwd:'clients/android',env,stdio:'inherit',shell:process.platform==='win32'});
  if(r.status!==0)process.exit(r.status||1);
  copyFileSync('clients/android/app/build/outputs/apk/release/app-release.apk',out);
 }else{
@@ -26,4 +26,5 @@ if(mode==='build'){
 const bytes=readFileSync(out);
 if(bytes[0]!==0x50||bytes[1]!==0x4b)throw new Error('That file is not an Android app (APK).');
 writeFileSync('public/downloads/android.json',JSON.stringify({versionCode,versionName,url:'/downloads/Heartbeat.apk',sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length},null,2)+'\n');
+if(mode==='build')console.log('Play Store bundle: clients/android/app/build/outputs/bundle/release/app-release.aab (see docs/play-store.md).');
 console.log(`Android ${versionName} (${versionCode}) ready at ${out} (${Math.round(bytes.length/1024)} KB). Restart with npm run beta:serve to serve it.`);

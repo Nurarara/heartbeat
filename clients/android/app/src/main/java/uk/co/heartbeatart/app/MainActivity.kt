@@ -33,13 +33,33 @@ class MainActivity : Activity() {
     private lateinit var store: Store
     private var email = ""
 
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); store = Store(this) }
-    override fun onResume() { super.onResume(); if (store.signedIn) home() else signIn() }
+    private val poller = android.os.Handler(android.os.Looper.getMainLooper())
+    private var poll: Runnable? = null
+    /** Each screen gets a number; replies meant for an earlier screen are ignored. */
+    private var generation = 0
+    private var awaitingCode = false
+    private fun stopPolling() { poll?.let { poller.removeCallbacks(it) }; poll = null; generation++ }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState); store = Store(this)
+        email = savedInstanceState?.getString("email") ?: ""; awaitingCode = savedInstanceState?.getBoolean("awaitingCode") ?: false
+    }
+    override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); out.putString("email", email); out.putBoolean("awaitingCode", awaitingCode) }
+    // Coming back from the email app keeps the code step on screen.
+    override fun onResume() { super.onResume(); if (store.signedIn) home() else if (awaitingCode && email.isNotEmpty()) codeStep() else signIn() }
+    override fun onPause() { stopPolling(); super.onPause() }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun page(): LinearLayout {
-        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(40), dp(24), dp(32)) }
-        setContentView(ScrollView(this).apply { setBackgroundColor(ink); addView(column) })
+        stopPolling()
+        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(24), dp(24), dp(32)) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(ink); addView(column) }
+        // Android 15+ draws under the status and navigation bars: keep the content clear of them.
+        scroll.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(android.view.WindowInsets.Type.systemBars()) else null
+            @Suppress("DEPRECATION") v.setPadding(0, bars?.top ?: insets.systemWindowInsetTop, 0, bars?.bottom ?: insets.systemWindowInsetBottom); insets
+        }
+        setContentView(scroll)
         return column
     }
     private fun label(s: String, size: Float = 15f, color: Int = cream, bold: Boolean = false) = TextView(this).apply {
@@ -60,6 +80,7 @@ class MainActivity : Activity() {
 
     // ---- Sign in: email, then the six-digit code (same as the website). ----
     private fun signIn() {
+        awaitingCode = false
         val c = page()
         c.addView(label("HEARTBEAT", 12f, muted)); c.addView(label("Come on in.", 32f))
         c.addView(label("Enter the email you were invited with. We'll send you a six-digit code.", 15f, muted))
@@ -76,6 +97,7 @@ class MainActivity : Activity() {
         c.addView(send)
     }
     private fun codeStep() {
+        awaitingCode = true
         val c = page()
         c.addView(label("HEARTBEAT", 12f, muted)); c.addView(label("Check your email.", 32f))
         c.addView(label("We sent a code to $email. It works for 10 minutes.", 15f, muted))
@@ -90,11 +112,11 @@ class MainActivity : Activity() {
             Background.run({ Api().post("/api/product/app/code/verify", body) }) { r ->
                 busy = false
                 r.onSuccess {
-                    store.token = it.optString("token"); store.email = it.optString("email")
+                    store.token = it.optString("token"); store.email = it.optString("email"); awaitingCode = false
                     Schedule.ensure(this)
-                    // Straight away: start a picture and open the frame so Heartbeat is seen at once.
-                    Background.run({ Picture.refresh(this, true); store.lastWallpaperRequest = System.currentTimeMillis(); Wallpaper.applyIfNew(this) }) {}
-                    startActivity(Intent(this, FrameActivity::class.java))
+                    // Straight away: start the first picture; home shows it painting and sets the lock screen when it lands.
+                    store.lastWallpaperRequest = System.currentTimeMillis()
+                    home()
                 }.onFailure { status.text = it.message }
             }
         }
@@ -140,10 +162,22 @@ class MainActivity : Activity() {
             }
         }
         paint()
-        Background.run({ Picture.refresh(this, false) }) { r ->
-            r.onSuccess { s -> if (s == null) { signIn(); return@onSuccess }; paint(); if (!s.optBoolean("ready")) notice.text = s.optString("reason"); Wallpaper.applyIfNew(this) }
-             .onFailure { if (!store.signedIn) signIn() else notice.text = "Offline: showing your latest picture." }
+        // Until the first picture exists (or while one is being made), this screen counts as showing: check every 15 seconds.
+        val mine = generation
+        fun check() {
+            if (mine != generation) return
+            val first = Picture.info(this).optString("id").isEmpty()
+            Background.run({ val s = Picture.refresh(this, first); runCatching { Wallpaper.applyIfNew(this) }; s }) { r ->
+                if (mine != generation) return@run
+                r.onSuccess { s ->
+                    if (s == null) { signIn(); return@onSuccess }
+                    paint()
+                    notice.text = when { !s.optBoolean("ready") -> s.optString("reason"); s.optBoolean("making") -> "Painting a new picture…"; s.optString("notice").isNotEmpty() -> s.optString("notice"); else -> "" }
+                    if (s.optBoolean("ready") && (Picture.info(this).optString("id").isEmpty() || s.optBoolean("making"))) { poll = Runnable { check() }; poller.postDelayed(poll!!, 15000) }
+                }.onFailure { if (!store.signedIn) signIn() else notice.text = "Offline: showing your latest picture." }
+            }
         }
+        check()
 
         c.addView(label("Where Heartbeat shows", 13f, muted).apply { setPadding(0, dp(20), 0, dp(4)) })
         c.addView(button("Open frame (full screen, stays on)") { startActivity(Intent(this, FrameActivity::class.java)) })

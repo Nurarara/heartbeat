@@ -66,11 +66,13 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
     if (showing) {
       try {
         // One request key per picture rhythm, so repeated checks never start a second picture.
-        const key = await hash(`${user.id}:app:${Math.floor(now / rhythm)}`), requestId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20, 32)}`;
-        const started = await (await generation(request, env, user, { requestId, surfaceId: profile.surfaceId, force: !profile.memory }, now)).json() as { status?: string; reason?: string };
+        const force = !profile.memory;
+        // Includes everything sent with it, so a new city or a first picture never collides with an earlier request.
+        const key = await hash(`${user.id}:app:${Math.floor(now / rhythm)}:${force ? 1 : 0}:${profile.version}:${profile.memoryVersion}`), requestId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20, 32)}`;
+        const started = await (await generation(request, env, user, { requestId, surfaceId: profile.surfaceId, force }, now)).json() as { status?: string; reason?: string };
         making = started.status === 'pending';
         if (started.status === 'failed' && started.reason) notice = started.reason;
-      } catch (error) { if (error instanceof ProductError) notice = error.message; else throw error; }
+      } catch (error) { if (error instanceof ProductError) { if (error.status !== 409) notice = error.message; } else throw error; }
     }
     const latest = await db(env).prepare("SELECT a.id,a.status,a.candidate,a.created_at FROM ai_attempts a JOIN hb_assets m ON m.id=a.id AND m.owner=a.owner AND m.art_key=a.art_key AND m.state='ready' WHERE a.owner=? AND a.art_key IS NOT NULL AND a.status IN ('ready','displayed') ORDER BY a.created_at DESC LIMIT 1").bind(user.id).first<{ id: string; status: string; candidate: string; created_at: number }>();
     // A visible screen is about to show the newest picture: record it, so the next scene builds on it.

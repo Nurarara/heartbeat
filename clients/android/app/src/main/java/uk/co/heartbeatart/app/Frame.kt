@@ -89,7 +89,7 @@ class FrameController(private val context: Context, private val view: FrameView)
     private fun check() {
         if (checking) return; checking = true; nextCheck = seconds + 60
         val store = Store(context)
-        Background.run({ Picture.refresh(context, !store.paused) }) { result ->
+        Background.run({ val s = Picture.refresh(context, !store.paused); runCatching { Wallpaper.applyIfNew(context) }; s }) { result ->
             checking = false
             val state = result.getOrNull() ?: return@run
             if (seconds < 5) presence.report()
@@ -98,7 +98,7 @@ class FrameController(private val context: Context, private val view: FrameView)
             view.caption = Picture.caption(info)
             view.message = if (state.optBoolean("ready")) "" else state.optString("reason")
             val id = info.optString("id")
-            if (id.isNotEmpty() && id != shownId) { Picture.bitmap(context)?.let { view.show(it) }; shownId = id; view.message = ""; Wallpaper.applyIfNew(context) }
+            if (id.isNotEmpty() && id != shownId) { Picture.bitmap(context)?.let { view.show(it) }; shownId = id; view.message = "" }
         }
     }
 }

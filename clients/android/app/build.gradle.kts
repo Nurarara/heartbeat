@@ -8,13 +8,13 @@ val keystorePath: String? = System.getenv("HEARTBEAT_ANDROID_KEYSTORE")
 
 android {
     namespace = "uk.co.heartbeatart.app"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "uk.co.heartbeatart.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "1.1.0"
     }
     signingConfigs {
         if (keystorePath != null) create("release") {

@@ -23,7 +23,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 const val SERVER = "https://app.heartbeatart.co.uk"
-const val APP_VERSION_CODE = 1
+const val APP_VERSION_CODE = 2
 
 class ApiError(val status: Int, message: String) : Exception(message)
 
@@ -99,7 +99,7 @@ object Picture {
     }
 
     /** Asks the server what to show and downloads a new picture when there is one. showing=true may start a new picture. */
-    fun refresh(context: Context, showing: Boolean): JSONObject? {
+    @Synchronized fun refresh(context: Context, showing: Boolean): JSONObject? {
         val store = Store(context); if (!store.signedIn) return null
         val api = Api(store.token)
         val state = try { api.get("/api/product/app/state" + if (showing) "?showing=1" else "") }
@@ -108,8 +108,9 @@ object Picture {
         val picture = state.optJSONObject("picture")
         if (picture != null && picture.optString("id") != info.optString("id")) {
             val data = api.bytes(picture.optString("url"), 25_000_000)
-            if (data.size < 4 || data[0] != 0xFF.toByte() || data[1] != 0xD8.toByte()) throw ApiError(415, "The picture was not a JPEG.")
-            val temp = File(context.filesDir, "current.jpg.tmp"); temp.writeBytes(data); temp.renameTo(file(context))
+            if (data.size < 4 || data[0] != 0xFF.toByte() || data[1] != 0xD8.toByte() || data[data.size - 2] != 0xFF.toByte() || data[data.size - 1] != 0xD9.toByte()) throw ApiError(415, "The picture was incomplete.")
+            val temp = File(context.filesDir, "current-${UUID.randomUUID()}.tmp"); temp.writeBytes(data)
+            if (!temp.renameTo(file(context))) { temp.delete(); throw ApiError(500, "The picture couldn't be saved.") }
             info.put("id", picture.optString("id")); info.put("title", picture.optString("title"))
         }
         for (key in listOf("city", "temperature", "unit", "mood", "email")) info.put(key, state.opt(key) ?: JSONObject.NULL)
@@ -121,7 +122,7 @@ object Picture {
 
 /** Lock screen and home screen pictures. */
 object Wallpaper {
-    fun applyIfNew(context: Context) {
+    @Synchronized fun applyIfNew(context: Context) {
         val store = Store(context); val id = Picture.info(context).optString("id")
         if (id.isEmpty() || id == store.wallpaperId || (!store.lockScreen && !store.homeScreen)) return
         apply(context); store.wallpaperId = id

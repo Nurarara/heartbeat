@@ -58,7 +58,13 @@ export async function updatePreferences(env:ProductEnv,owner:string,input:Record
  if(changed.meta.changes!==1)throw new ProductError('Your preferences changed on another screen. Reload before saving.',409);
  // A new city starts its first picture straight away instead of waiting out the last city's rhythm.
  // Daily limits and the spending cap still apply.
- if(p.preferences&&!samePlace)await db(env).prepare('UPDATE ai_sessions SET next_at=0 WHERE id=?').bind(owner).run();
+ if(p.preferences&&!samePlace){
+  // Pictures for the old city that haven't started are cancelled first, so they can't spend the new city's slot.
+  await db(env).batch([
+   db(env).prepare("UPDATE hb_jobs SET status='canceled',error_category='city_changed',result=?,updated_at=?,stage_version=stage_version+1 WHERE owner=? AND status='accepted' AND (lease IS NULL OR lease_until<?) AND NOT EXISTS(SELECT 1 FROM hb_usage_reservations r WHERE r.job_id=hb_jobs.id)").bind(JSON.stringify({status:'failed',jobState:'canceled',reason:'Your city changed, so this picture was not made.'}),now,owner,now),
+   db(env).prepare('UPDATE ai_sessions SET next_at=0 WHERE id=?').bind(owner),
+  ]);
+ }
  return {...await profileFor(env,owner,{worldId:p.worldId,surfaceId:p.surfaceId},now),saved:true};
 }
 export function presentationPolicy(preferences:AmbientPreferences,surface:Surface,now:number) {

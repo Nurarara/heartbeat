@@ -38,6 +38,11 @@ and run `npm run android:publish`. Either way, restart with `npm run beta:serve`
 **Keep the signing key safe.** Every update must be signed with the same key; if it is lost, testers
 have to uninstall and reinstall once.
 
+## Google Play
+
+See [docs/play-store.md](../../docs/play-store.md): what Google requires, the listing text, data
+safety answers, and the icon and feature graphic in `store/`.
+
 ## Releasing an update
 
 Raise `versionCode` (and `versionName`) in `app/build.gradle.kts` and `APP_VERSION_CODE` in

@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.2.0";
+ public const string Version = "1.2.1";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -47,6 +47,8 @@ static class App {
    if (mode == "uninstall") { Installer.Uninstall(); return 0; }
    if (mode == "tray") { Application.Run(new TrayContext(args.Contains("--welcome"))); return 0; }
    // Double-clicked from Downloads (or anywhere but the install folder): install, then hand over to the installed copy.
+   // Explorer's "Configure" on the .scr runs it with no arguments: that means settings, not install.
+   if (Path.GetExtension(Application.ExecutablePath).Equals(".scr", StringComparison.OrdinalIgnoreCase)) { StartTray(); return 0; }
    if (!string.Equals(Path.GetFullPath(Application.ExecutablePath), Path.GetFullPath(ExePath), StringComparison.OrdinalIgnoreCase)) { Installer.Install(); return 0; }
    Application.Run(new TrayContext(false)); return 0;
   } catch (Exception e) {
@@ -98,7 +100,7 @@ static class App {
  public static string Str(Dictionary<string, object> d, string key) { object v; return d != null && d.TryGetValue(key, out v) && v != null ? Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) : ""; }
  public static bool Truthy(Dictionary<string, object> d, string key) { object v; return d != null && d.TryGetValue(key, out v) && v is bool && (bool)v; }
  public static string Sha256(byte[] bytes) { using (var s = SHA256.Create()) return BitConverter.ToString(s.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
- public static void WriteAtomic(string path, byte[] bytes) { string temp = path + ".tmp"; File.WriteAllBytes(temp, bytes); if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path); }
+ public static void WriteAtomic(string path, byte[] bytes) { string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; File.WriteAllBytes(temp, bytes); if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path); }
  public static bool OnMains { get { return SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online; } }
 }
 
@@ -182,13 +184,25 @@ static class Cache {
   var info = Info(); var picture = state.ContainsKey("picture") ? state["picture"] as Dictionary<string, object> : null;
   if (picture != null && App.Str(picture, "id") != App.Str(info, "id")) {
    var bytes = await api.Bytes(App.Str(picture, "url"), 25000000).ConfigureAwait(false);
-   if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) throw new ApiError(415, "The picture was not a JPEG.");
-   App.WriteAtomic(App.PicturePath, bytes);
+   if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[bytes.Length - 2] != 0xFF || bytes[bytes.Length - 1] != 0xD9) throw new ApiError(415, "The picture was incomplete.");
    info["id"] = App.Str(picture, "id"); info["title"] = App.Str(picture, "title");
+   foreach (var key in new[] { "city", "temperature", "unit", "mood", "email" }) info[key] = state.ContainsKey(key) ? state[key] : null;
+   Save(bytes, info);
+   return state;
   }
   foreach (var key in new[] { "city", "temperature", "unit", "mood", "email" }) info[key] = state.ContainsKey(key) ? state[key] : null;
-  try { App.WriteAtomic(InfoPath, Encoding.UTF8.GetBytes(App.Json.Serialize(info))); } catch { }
+  Save(null, info);
   return state;
+ }
+ /// The tray and the screensaver are separate programs: only one writes the picture at a time (no awaits inside).
+ static void Save(byte[] picture, Dictionary<string, object> info) {
+  using (var gate = new Mutex(false, @"Local\HeartbeatCache")) {
+   bool held = false;
+   try { try { held = gate.WaitOne(10000); } catch (AbandonedMutexException) { held = true; }
+    if (picture != null) App.WriteAtomic(App.PicturePath, picture);
+    try { App.WriteAtomic(InfoPath, Encoding.UTF8.GetBytes(App.Json.Serialize(info))); } catch { }
+   } finally { if (held) gate.ReleaseMutex(); }
+  }
  }
  public static string Caption(Dictionary<string, object> info) {
   string t = App.Str(info, "temperature"), city = App.Str(info, "city"), unit = App.Str(info, "unit").ToUpperInvariant();
@@ -310,12 +324,18 @@ static class Installer {
  }
  /// Writes a file even while an older copy is running: Windows allows renaming a running program.
  public static void Replace(string path, byte[] bytes) {
-  if (File.Exists(path)) { string old = path + ".old"; try { File.Delete(old); } catch { } try { File.Move(path, old); } catch { File.Delete(path); } }
-  File.WriteAllBytes(path, bytes);
+  // Write the new file first; only then swap, and put the old one back if the swap fails.
+  string fresh = path + ".new", old = path + ".old";
+  File.WriteAllBytes(fresh, bytes);
+  if (new FileInfo(fresh).Length != bytes.Length) throw new IOException("The new version could not be written.");
+  if (!File.Exists(path)) { File.Move(fresh, path); return; }
+  try { File.Delete(old); } catch { }
+  File.Move(path, old);
+  try { File.Move(fresh, path); } catch { File.Move(old, path); throw; }
  }
  static void StopRunningCopies() {
-  foreach (var p in Process.GetProcessesByName("Heartbeat")) {
-   try { if (p.Id != Process.GetCurrentProcess().Id && string.Equals(p.MainModule.FileName, App.ExePath, StringComparison.OrdinalIgnoreCase)) { p.Kill(); p.WaitForExit(3000); } } catch { }
+  foreach (var p in Process.GetProcessesByName("Heartbeat").Concat(Process.GetProcessesByName("Heartbeat.scr"))) {
+   try { string file = p.MainModule.FileName; if (p.Id != Process.GetCurrentProcess().Id && (string.Equals(file, App.ExePath, StringComparison.OrdinalIgnoreCase) || string.Equals(file, App.ScrPath, StringComparison.OrdinalIgnoreCase))) { p.Kill(); p.WaitForExit(3000); } } catch { }
   }
  }
  public static void SetScreensaver(Settings settings, int minutes) {
@@ -344,10 +364,10 @@ static class Installer {
   try { Wallpaper.Restore(settings); } catch { }
   StartMenuShortcut(false); Settings.SetToken("");
   StopRunningCopies();
-  // A running program can't delete itself: a short-lived command removes the folders once this exits.
-  string script = "/c timeout /t 2 /nobreak >nul & rmdir /s /q \"" + App.InstallDir + "\" & rmdir /s /q \"" + App.DataDir + "\"";
-  Process.Start(new ProcessStartInfo("cmd.exe", script) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
   MessageBox.Show("Heartbeat has been removed.", "Heartbeat");
+  // A running program can't delete itself: a short-lived command removes the folders just after this exits.
+  string script = "/c timeout /t 3 /nobreak >nul & rmdir /s /q \"" + App.InstallDir + "\" & rmdir /s /q \"" + App.DataDir + "\"";
+  Process.Start(new ProcessStartInfo("cmd.exe", script) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
   Environment.Exit(0);
  }
  static void StartMenuShortcut(bool create) {
@@ -390,8 +410,10 @@ class TrayContext : ApplicationContext {
  bool busy;
 
  public TrayContext(bool welcome) {
-  bool created; single = new Mutex(true, @"Local\HeartbeatTray", out created);
-  if (!created) { ExitThread(); Environment.Exit(0); return; }
+  // One icon at a time. Straight after an update, wait for the previous version to finish closing.
+  single = new Mutex(false, @"Local\HeartbeatTray");
+  bool owned; try { owned = single.WaitOne(Environment.GetCommandLineArgs().Contains("--updated") ? 20000 : 0); } catch (AbandonedMutexException) { owned = true; }
+  if (!owned) { ExitThread(); Environment.Exit(0); return; }
   Updater.CleanOld();
   // Earlier versions defaulted to 5 minutes; move to 2 unless someone picked a time.
   if (!settings.IdleChosen && settings.IdleMinutes == 5) { try { Installer.SetScreensaver(settings, 2); settings.Save(); } catch { } }
@@ -438,7 +460,7 @@ class TrayContext : ApplicationContext {
  async Task CheckUpdates(bool force) {
   try {
    string result = await Updater.Check(settings, force);
-   if (result.StartsWith("updated:")) { Process.Start(new ProcessStartInfo(App.ExePath, "--tray") { UseShellExecute = false }); icon.Visible = false; single.ReleaseMutex(); Environment.Exit(0); }
+   if (result.StartsWith("updated:")) { Process.Start(new ProcessStartInfo(App.ExePath, "--tray --updated") { UseShellExecute = false }); icon.Visible = false; single.ReleaseMutex(); Environment.Exit(0); }
    else if (force && result != "") Say(result);
   } catch (Exception e) { if (force) Say(e.Message); }
  }

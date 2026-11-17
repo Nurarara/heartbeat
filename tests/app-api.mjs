@@ -106,5 +106,16 @@ const again = await (await f.call('preferences', undefined, { cookie: web })).js
 assert.equal((await f.call('preferences', { preferences: sf, expectedVersion: again.version }, { cookie: web })).status, 200);
 assert.equal(f.sqlite.prepare('SELECT next_at FROM ai_sessions WHERE id=?').get(ownerId).next_at, 0, 'A new city starts at once');
 
+// After the first picture is shown (memory saved), checking again in the same slot never errors.
+const phoneState = await (await app('state?showing=1', undefined, phone.token)).json();
+assert.equal(phoneState.notice, '', 'No "request key used for different input" error');
+
+// A picture for the old city that hasn't started is cancelled when the city changes.
+f.sqlite.prepare("INSERT INTO hb_jobs(id,owner,request_id,input,status,created_at,updated_at) VALUES ('old-city-job',?,'old-city-req','{}','accepted',?,?)").run(ownerId, f.now(), f.now());
+const latestPrefs = await (await f.call('preferences', undefined, { cookie: web })).json();
+const paris = { ...latestPrefs.preferences, location: { name: 'Paris', country: 'France', latitude: 48.85, longitude: 2.35, timezone: 'Europe/Paris' } };
+assert.equal((await f.call('preferences', { preferences: paris, expectedVersion: latestPrefs.version }, { cookie: web })).status, 200);
+assert.equal(f.sqlite.prepare("SELECT status FROM hb_jobs WHERE id='old-city-job'").get().status, 'canceled');
+
 f.close();
 console.log('app api: ok');
