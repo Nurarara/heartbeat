@@ -25,6 +25,7 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
   // A new city never waits for the previous city's next-picture time.
   const lastLocation = useRef(inputs.base?.locationKey);
   useEffect(() => { const key = inputs.base?.locationKey; if (!key || key === lastLocation.current) return; const first = lastLocation.current === undefined; lastLocation.current = key; if (!first) queueMicrotask(() => setNextAt(0)); }, [inputs.base?.locationKey]);
+  const rhythm = useRef(600000);
   const latest = useRef(inputs), inFlight = useRef(false), attempted = useRef({ id: '', at: 0 }), acked = useRef(new Set<string>());
   useLayoutEffect(() => { latest.current = inputs; }, [inputs]);
   const refresh = useCallback(async () => {
@@ -34,7 +35,7 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
       if (!response.ok) throw new Error('AI setup/storage needs checking.');
       const status = await response.json() as AIStatus;
       if (typeof status.configured !== 'boolean' || typeof status.authorized !== 'boolean') throw new Error('Invalid status');
-      if(scope.active){setConnection(status); setNextAt(value => Math.max(value, status.nextAt || 0));}
+      if(scope.active){setConnection(status); if (status.cadence && status.cadence > 0) rhythm.current = status.cadence; setNextAt(value => Math.max(value, status.nextAt || 0));}
     } catch { if(scope.active)setConnection({ ...OFF, reason: 'AI connection is unavailable. Free artwork is available.' }); }
   }, []);
   useEffect(() => {
@@ -93,7 +94,7 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
           if (response.status === 404 || response.status === 401) clearRecovery();
           throw new Error(result.error || 'AI preparation is unavailable.');
         }
-        setNextAt(Math.max(latest.current.at + (result.status === 'pending' ? customer ? 5000 : 60000 : 600000), result.nextAt || 0));
+        setNextAt(Math.max(latest.current.at + (result.status === 'pending' ? customer ? 5000 : 60000 : rhythm.current), result.nextAt || 0));
         if(result.status==='pending')setRecoveryAt(latest.current.at+(customer?Math.max(5000,Math.min(60000,(result as AIResult & {retryAfter?:number}).retryAfter! *1000||5000))+Math.floor(Math.random()*1500):60000));
         if (result.status === 'ready' && result.candidate) {
           const candidate = result.candidate, current = latest.current;

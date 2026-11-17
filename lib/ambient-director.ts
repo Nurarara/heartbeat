@@ -162,9 +162,10 @@ export function planMoment(
   at: number,
   memory: StoryMemory | null,
   seed: number,
-  options: { force?: boolean; festive?: boolean } = {},
+  options: { force?: boolean; festive?: boolean; /** Shortest and longest time one picture stays (defaults 10 min / 1 hour). */ minHold?: number; maxHold?: number } = {},
 ): { action: 'HOLD' | 'REIMAGINE'; direction: CreativeDirection; reason: string; nextCheckAt: number } {
   if (!validAt(at)) throw new RangeError('Creative planning needs a valid timestamp.');
+  const minHold = options.minHold && options.minHold > 0 ? options.minHold : TEN_MINUTES, maxHold = Math.max(minHold, options.maxHold && options.maxHold > 0 ? options.maxHold : HOUR);
   const locationKey = keyOf(location);
   const clock = localClock(location, at);
   const usable = usableContext(context, at);
@@ -201,7 +202,7 @@ export function planMoment(
   const trigger = !previous ? 'Establish the first artwork for this city.'
     : options.force ? 'You invited a fresh visual idea.'
       : enteringDarkness ? 'Darkness or local quiet hours call for a restful screen now.'
-        : age < TEN_MINUTES ? ''
+        : age < minHold ? ''
           : changedDate ? 'The local calendar has moved into a new day.'
             : changedPhase ? 'The local light has entered a different part of the day.'
               : changedSeason ? 'The local seasonal context has changed.'
@@ -210,15 +211,15 @@ export function planMoment(
                     ? 'New outdoor temperature data differs meaningfully from the neutral drawing cue.'
                     : 'Outdoor temperature has shifted enough to suggest a different atmosphere.'
                     : changedWeather ? 'Fresh local weather suggests a different atmosphere.'
-                      : age >= HOUR ? 'After an hour, introduce a different visual idea even while conditions stay steady.' : '';
+                      : age >= maxHold ? 'Time for a different visual idea even while conditions stay steady.' : '';
 
   if (!trigger && previous) {
-    const reason = age < TEN_MINUTES
-      ? 'Let the current artwork settle for at least ten minutes; darkness can still interrupt.'
+    const reason = age < minHold
+      ? 'Let the current artwork settle; darkness can still interrupt.'
       : 'Conditions are steady. Let this moment breathe until a meaningful change or the one-hour limit.';
     return {
       action: 'HOLD', direction: previous.direction, reason,
-      nextCheckAt: Math.min(at + TEN_MINUTES, previous.at + HOUR, age < TEN_MINUTES ? previous.at + TEN_MINUTES : Infinity),
+      nextCheckAt: Math.min(at + minHold, previous.at + maxHold, age < minHold ? previous.at + minHold : Infinity),
     };
   }
 
@@ -267,5 +268,5 @@ export function planMoment(
     phase, season, reason,
     brief: { weekday: clock.weekday, temperature: measured, activity, atmosphere, weather: weather.condition },
   };
-  return { action: 'REIMAGINE', direction, reason, nextCheckAt: at + TEN_MINUTES };
+  return { action: 'REIMAGINE', direction, reason, nextCheckAt: at + minHold };
 }

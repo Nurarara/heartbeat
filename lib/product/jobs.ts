@@ -176,7 +176,7 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
     database.prepare("UPDATE ai_attempts SET status='ready',candidate=?,art_key=?,image_hash=? WHERE id=? AND EXISTS(SELECT 1 FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?) AND EXISTS(SELECT 1 FROM hb_jobs WHERE id=? AND lease=? AND stage_version=? AND lease_until>?)").bind(JSON.stringify(candidate),asset.art_key,asset.image_hash,job.id,job.owner,job.owner_epoch,job.id,claim,job.stage_version,now()),
     database.prepare("UPDATE hb_assets SET state='ready',updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM ai_attempts WHERE id=? AND status='ready') AND EXISTS(SELECT 1 FROM hb_jobs WHERE id=? AND lease=? AND stage_version=? AND lease_until>?)").bind(now(),job.id,job.id,job.id,claim,job.stage_version,now()),
    ]);if(!commit[0].meta.changes)throw new ProductError('The account or job changed before completion.',409);
-   await boundary(deps,'ready_write');await settleUsage(env,job.id,'commit',now());await boundary(deps,'usage_commit');await transition(env,job,claim,'ready',{result:JSON.stringify({status:'ready',candidate,nextAt:at+600000})},now());
+   await boundary(deps,'ready_write');await settleUsage(env,job.id,'commit',now());await boundary(deps,'usage_commit');const rhythm=await database.prepare('SELECT next_at FROM ai_sessions WHERE id=?').bind(job.owner).first<{next_at:number}>();await transition(env,job,claim,'ready',{result:JSON.stringify({status:'ready',candidate,nextAt:rhythm?.next_at||at+600000})},now());
   }
   return {completed:terminal.has((await readJob(env,job.id))!.status)};
  }catch(error){

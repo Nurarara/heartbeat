@@ -12,9 +12,9 @@ export const ownerEmail = (env: ProductEnv) => (env.HEARTBEAT_OWNER_EMAIL || '')
 export const isOwner = (env: ProductEnv, address: string) => !!ownerEmail(env) && address === ownerEmail(env);
 export const betaSeats = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_SEATS, 25, 1, 500);
 /** Minutes between new pictures for beta testers. */
-export const betaCadence = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_CADENCE_MINUTES, 10, 2, 240) * 60000;
+export const betaCadence = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_CADENCE_MINUTES, 3, 2, 240) * 60000;
 /** New pictures one tester can start per UTC day, so one screen left on overnight cannot use everyone's budget. */
-export const betaDailyPictures = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_USER_DAILY, 36, 1, 1000);
+export const betaDailyPictures = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_USER_DAILY, 30, 1, 1000);
 function clamp(value: string | undefined, fallback: number, low: number, high: number) { const n = Number(value ?? fallback); return Number.isSafeInteger(n) && n >= low && n <= high ? n : fallback; }
 const dayStart = (now: number) => Math.floor(now / 86400000) * 86400000;
 

@@ -42,7 +42,7 @@ assert.equal(full.status, 409); assert.match((await full.json()).error, /full/);
 const sam = await signIn('sam@example.test');
 const samSession = await (await f.call('auth/session', undefined, { cookie: sam })).json();
 assert.equal(samSession.user.email, 'sam@example.test'); assert.equal(samSession.owner, false);
-assert.equal(samSession.access.eligible, true); assert.equal(samSession.access.cadence, 600000);
+assert.equal(samSession.access.eligible, true); assert.equal(samSession.access.cadence, 180000);
 assert.ok(samSession.access.allowance >= 5000);
 assert.match(f.emails.at(-1).text, /\d{6}/); assert.equal(f.emails.at(-1).from, 'Heartbeat <hello@example.test>');
 

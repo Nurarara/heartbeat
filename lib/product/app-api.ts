@@ -5,7 +5,7 @@ import type { User } from './auth.ts';
 import { db, hash, json, ProductError, randomToken, rate, readJSON } from './core.ts';
 import { profileFor, acknowledgeDisplay, updatePreferences } from './profiles.ts';
 import { generation, type JobEnv } from './jobs.ts';
-import { betaMode, codeLogin, invited, isOwner, recordPresence, sendCode } from './beta.ts';
+import { betaCadence, betaMode, codeLogin, invited, isOwner, recordPresence, sendCode } from './beta.ts';
 import { MOOD_IDS, MOODS, parseMood } from '../moods.ts';
 import { withMood } from '../ambient.ts';
 import { createWeatherAdapter } from '../server/weather.ts';
@@ -58,15 +58,15 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
   // What should this screen show now? With showing=1 the screen is visible, so a due picture is started.
   if (route === 'state' && request.method === 'GET') {
     await rate(env, `app-state:${device.id}`, now, 20, 60000);
-    const url = new URL(request.url), showing = url.searchParams.get('showing') === '1';
+    const url = new URL(request.url), showing = url.searchParams.get('showing') === '1', rhythm = betaMode(env) ? betaCadence(env) : 600000;
     const profile = await profileFor(env, user.id, {}, now);
     if (!profile.preferences) return json({ ready: false, reason: 'Choose your city in your studio first.', studio: '/app', checkAfterSeconds: CHECK_SECONDS });
     const preferences = profile.preferences;
     let making = false, notice = '';
     if (showing) {
       try {
-        // One request key per 10 minutes, so repeated checks never start a second picture.
-        const key = await hash(`${user.id}:app:${Math.floor(now / 600000)}`), requestId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20, 32)}`;
+        // One request key per picture rhythm, so repeated checks never start a second picture.
+        const key = await hash(`${user.id}:app:${Math.floor(now / rhythm)}`), requestId = `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20, 32)}`;
         const started = await (await generation(request, env, user, { requestId, surfaceId: profile.surfaceId, force: !profile.memory }, now)).json() as { status?: string; reason?: string };
         making = started.status === 'pending';
         if (started.status === 'failed' && started.reason) notice = started.reason;
@@ -80,6 +80,8 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
     const candidate = latest ? JSON.parse(latest.candidate) : null;
     return json({
       ready: true, checkAfterSeconds: CHECK_SECONDS, making, notice,
+      // How often a visible screen gets a new picture, and how often a wallpaper should ask (minutes).
+      rhythmMinutes: Math.round(rhythm / 60000), wallpaperMinutes: betaMode(env) ? Math.round(rhythm / 60000) : 30,
       picture: latest ? { id: latest.id, title: candidate?.direction?.artwork?.title || '', url: `/api/product/app/art/${latest.id}`, createdAt: latest.created_at } : null,
       city: preferences.location.name, timezone: preferences.location.timezone, temperature, unit: preferences.unit,
       mood: parseMood(preferences.mood), moods: MOOD_IDS.map(id => ({ id, label: MOODS[id].label, colour: MOODS[id].colour })),

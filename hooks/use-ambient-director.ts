@@ -19,7 +19,9 @@ function saveMemory(memory: StoryMemory, onFailure: () => void) {
 }
 
 /** Plans may be discarded. Only a fully displayed frame is allowed into history. */
-export function useAmbientDirector(preferences: AmbientPreferences | null, context: Context | null, at: number, paused: boolean, onStorageFailure: () => void, initialMemory?: StoryMemory | null) {
+export function useAmbientDirector(preferences: AmbientPreferences | null, context: Context | null, at: number, paused: boolean, onStorageFailure: () => void, initialMemory?: StoryMemory | null, holdMs?: number) {
+  // An account rhythm (for example 3 minutes in the private test) sets how long a picture stays.
+  const hold = holdMs && holdMs > 0 ? { minHold: holdMs, maxHold: holdMs } : {};
   const key = preferences ? `${preferences.location.latitude},${preferences.location.longitude}:${preferences.location.timezone}` : "";
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [visible, setVisible] = useState(true);
@@ -52,7 +54,7 @@ export function useAmbientDirector(preferences: AmbientPreferences | null, conte
       if (creative && creative.displayed >= (memory?.creative?.displayed || 0)) memory = { ...(memory || { version: 1, locationKey: key, history: [] }), creative };
     }
     catch { storageFailure.current(); }
-    const result = planMoment(latest.preferences.location, latest.context, latest.at, memory, latest.preferences.seed, { festive: latest.preferences.festiveTouches });
+    const result = planMoment(latest.preferences.location, latest.context, latest.at, memory, latest.preferences.seed, { festive: latest.preferences.festiveTouches, ...hold });
     setPlayback({ key, memory, direction: result.direction, pending: result.action === "REIMAGINE", failures: 0, retryToken: 0 });
     consumedManual.current = manual;
     // A city change starts a separate world. Preference toggles are handled below.
@@ -65,7 +67,7 @@ export function useAmbientDirector(preferences: AmbientPreferences | null, conte
     const latest = current.current, state = active.current;
     if (!latest.preferences || !state || state.key !== latest.key || latest.paused || !visible || document.hidden) return;
     const forced = manual !== consumedManual.current;
-    const result = planMoment(latest.preferences.location, latest.context, latest.at, state.memory, forced ? manual : latest.preferences.seed, { force: forced, festive: latest.preferences.festiveTouches });
+    const result = planMoment(latest.preferences.location, latest.context, latest.at, state.memory, forced ? manual : latest.preferences.seed, { force: forced, festive: latest.preferences.festiveTouches, ...hold });
     const actualPhase = planMoment(latest.preferences.location, latest.context, latest.at, null, latest.preferences.seed).direction.phase;
     // Do not replace a preparing candidate on every clock tick. Darkness is an
     // exception: a pending bright picture must never win after the local night starts.
@@ -101,7 +103,7 @@ export function useAmbientDirector(preferences: AmbientPreferences | null, conte
   const canDisplay = useCallback((direction: CreativeDirection) => {
     const latest = current.current, state = active.current;
     if (!latest.preferences || latest.paused || document.hidden || state?.key !== latest.key || state.direction.id !== direction.id) return false;
-    const safety = planMoment(latest.preferences.location, latest.context, latest.at, null, latest.preferences.seed, { festive: latest.preferences.festiveTouches });
+    const safety = planMoment(latest.preferences.location, latest.context, latest.at, null, latest.preferences.seed, { festive: latest.preferences.festiveTouches, ...hold });
     return safety.direction.phase !== "night" || direction.phase === "night";
   }, []);
   const requestMoment = useCallback(() => setManual(crypto.getRandomValues(new Uint32Array(1))[0] || 1), []);

@@ -166,11 +166,14 @@ export default function LiveHeartbeat({customer = false, initialPreferences, ini
   const outdoors = useOutdoorContext(preferences?.location, changeOffset,customer);
   const usable = usableContext(outdoors.context, now);
   const storageFailure = useCallback(() => setStorageAvailable(false), []);
-  const director = useAmbientDirector(preferences, outdoors.context, now, paused, storageFailure, initialMemory);
+  const [rhythm, setRhythm] = useState<number | undefined>(undefined);
+  const director = useAmbientDirector(preferences, outdoors.context, now, paused, storageFailure, initialMemory, customer ? rhythm : undefined);
   const [openingDirection] = useState(() => planMoment(LONDON, null, Date.now(), null, 731921).direction);
   const screenReady=useScreenProfile(customer&&!!preferences,initialSurface);
   usePresence(customer&&!!preferences,parseMood(preferences?.mood));
   const ai = useAIPlayback({ base: director.direction, memory: director.memory, preferences, at: now, paused, visible: director.visible&&screenReady, accept: director.acceptGenerated, reject: director.rejectGenerated, localCanDisplay: director.canDisplay },customer);
+  const accountRhythm = ai.connection.cadence;
+  useEffect(() => { if (customer && accountRhythm && accountRhythm !== rhythm) queueMicrotask(() => setRhythm(accountRhythm)); }, [customer, accountRhythm, rhythm]);
   const serverVersion=useRef(initialPreferencesVersion);
   const savedPreferences=useRef(initialPreferences?JSON.stringify(initialPreferences):'');
   useEffect(()=>{
