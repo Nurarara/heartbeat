@@ -17,7 +17,8 @@ function boundedSet<T>(map:Map<string,T>,key:string,value:T){if(map.size>=MAX_EN
 function endpoint(env:ProductEnv,kind:'forecast'|'search'){
  const provider=env.HEARTBEAT_WEATHER_PROVIDER||'open-meteo-free';
  if(!['open-meteo-free','open-meteo-commercial','visual-crossing-free'].includes(provider))throw new WeatherConfigurationError('Weather provider is not supported.');
- const visual=provider==='visual-crossing-free',commercial=provider==='open-meteo-commercial',hosted=['staging','production'].includes(env.HEARTBEAT_DEPLOYMENT_ENV||'')||env.HEARTBEAT_APP_MODE==='production';
+ const visual=provider==='visual-crossing-free',commercial=provider==='open-meteo-commercial',hosted=['staging','production'].includes(env.HEARTBEAT_DEPLOYMENT_ENV||'')||env.HEARTBEAT_APP_MODE==='production'&&!(env.HEARTBEAT_BETA==='true'&&env.HEARTBEAT_SELF_HOSTED==='true');
+ // A free, invite-only test on your own machine may use Open-Meteo's free non-commercial service; paid hosting may not.
  if(hosted&&!visual&&(!commercial||!env.HEARTBEAT_WEATHER_API_KEY?.trim()))throw new WeatherConfigurationError('Commercial weather must be configured before hosted use.');
  if(commercial&&!env.HEARTBEAT_WEATHER_API_KEY?.trim())throw new WeatherConfigurationError('Commercial weather credentials are missing.');
  const fallback=visual?'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/':kind==='forecast'?(commercial?'https://customer-api.open-meteo.com/v1/forecast':'https://api.open-meteo.com/v1/forecast'):(commercial?'https://customer-geocoding-api.open-meteo.com/v1/search':'https://geocoding-api.open-meteo.com/v1/search');

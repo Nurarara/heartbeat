@@ -3,6 +3,7 @@ import { fixture } from './product-fixture.mjs';
 import { accessFor } from '../lib/product/access.ts';
 import { deviceOf, sixDigits } from '../lib/product/beta.ts';
 import { selfHostedRequest } from '../lib/product/self-hosted.ts';
+import { createWeatherAdapter } from '../lib/server/weather.ts';
 
 const OWNER = 'owner@example.test';
 const f = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: OWNER, HEARTBEAT_BETA_SEATS: '2', HEARTBEAT_BETA_USER_DAILY: '2', HEARTBEAT_EMAIL_API_KEY: 'fixture-mail', HEARTBEAT_EMAIL_FROM: 'Heartbeat <hello@example.test>' } });
@@ -119,5 +120,12 @@ assert.equal(selfHostedRequest(new Request('http://127.0.0.1:4300/api/product/op
 assert.equal(selfHostedRequest(new Request('http://app.heartbeatart.co.uk/'), { ...env, HEARTBEAT_SELF_HOSTED: 'false' }).url, 'http://app.heartbeatart.co.uk/');
 const posted = selfHostedRequest(new Request('http://app.heartbeatart.co.uk/api/product/presence', { method: 'POST', body: '{"a":1}', headers: { Origin: 'https://app.heartbeatart.co.uk' } }), env);
 assert.equal(posted.method, 'POST'); assert.equal(await posted.text(), '{"a":1}'); assert.equal(posted.headers.get('origin'), 'https://app.heartbeatart.co.uk');
+
+// The self-hosted private test may use Open-Meteo's free service; ordinary production may not.
+const geo = async url => { assert.match(String(url), /^https:\/\/geocoding-api\.open-meteo\.com\//); return Response.json({ results: [{ name: 'London', country: 'United Kingdom', latitude: 51.5, longitude: -0.12, timezone: 'Europe/London' }] }); };
+const betaWeather = createWeatherAdapter({ HEARTBEAT_APP_MODE: 'production', HEARTBEAT_BETA: 'true', HEARTBEAT_SELF_HOSTED: 'true' }, { fetcher: geo });
+assert.equal((await betaWeather.search('London'))[0].name, 'London');
+await assert.rejects(createWeatherAdapter({ HEARTBEAT_APP_MODE: 'production' }, { fetcher: geo }).search('London'), /Commercial weather/);
+await assert.rejects(createWeatherAdapter({ HEARTBEAT_APP_MODE: 'production', HEARTBEAT_BETA: 'true' }, { fetcher: geo }).search('London'), /Commercial weather/);
 
 console.log('private beta: ok');
