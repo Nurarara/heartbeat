@@ -9,7 +9,8 @@ export type ProductEnv = {
  HEARTBEAT_WEATHER_PROVIDER?:string; HEARTBEAT_WEATHER_API_KEY?:string; HEARTBEAT_WEATHER_FORECAST_URL?:string;
  HEARTBEAT_WEATHER_GEOCODING_URL?:string; HEARTBEAT_WEATHER_ALLOWED_HOSTS?:string; HEARTBEAT_WEATHER_ATTRIBUTION?:string;
  HEARTBEAT_DAILY_BUDGET_MICROS?:string; HEARTBEAT_DIRECTOR_ESTIMATE_MICROS?:string; HEARTBEAT_IMAGE_ESTIMATE_MICROS?:string;
- HEARTBEAT_PROVIDER_CONCURRENCY?:string; HEARTBEAT_MAX_QUEUE_AGE_MS?:string;
+ HEARTBEAT_PROVIDER_CONCURRENCY?:string;
+ HEARTBEAT_BETA?:string; HEARTBEAT_DIM_TOO_BRIGHT?:string; HEARTBEAT_SELF_HOSTED?:string; HEARTBEAT_OWNER_EMAIL?:string; HEARTBEAT_BETA_SEATS?:string; HEARTBEAT_BETA_CADENCE_MINUTES?:string; HEARTBEAT_BETA_USER_DAILY?:string; HEARTBEAT_MAX_QUEUE_AGE_MS?:string;
  ARTWORK_WORKFLOW?:{create(input:{id:string;params:{jobId:string}}):Promise<unknown>;get(id:string):Promise<{status():Promise<{status:string}>;restart?():Promise<unknown>}>};
 };
 export class ProductError extends Error { status:number; constructor(message: string, status = 400) { super(message); this.status=status; } }

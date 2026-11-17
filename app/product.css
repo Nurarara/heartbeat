@@ -23,3 +23,5 @@
 .hp-studio-top>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hp-studio-top>.hp-button{flex-shrink:0}
 @media(max-width:760px){.hp-living-stage .hp-organism{opacity:.44}.hp-living-stage[data-hero=pulse] .hp-organism{opacity:.6}.hp-living-stage[data-hero=night] .hp-organism{opacity:.72}}
+.hp-auth input.hp-code-input{font-size:30px;letter-spacing:.45em;font-variant-numeric:tabular-nums;padding:10px 0}.hp-auth-switch button:disabled{color:var(--hp-muted);cursor:default}
+.hp-sidebar-admin{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--hp-text)!important;padding:8px 0}

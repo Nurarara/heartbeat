@@ -9,6 +9,7 @@ import {recoverBilling,cancelPendingCheckout,processBillingInbox} from './billin
 import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
 import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
+import {adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
  const clock=deps.now||Date.now,fetcher=deps.fetcher||fetch;
@@ -20,9 +21,13 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    if(request.method!=='GET')checkOrigin(request,env);
    if(path.startsWith('device/')&&!['device/approve','device/revoke'].includes(path)) {const device=await deviceRoute(request,env,path,now);if(device)return device;}
    if(path==='plans'&&request.method==='GET') {if(billingReady(env))await rate(env,`prices:${request.headers.get('cf-connecting-ip')||'local'}`,now,20,60000);return json({plans:Object.values(PLANS),billingReady:billingReady(env),prices:await priceCatalog(env,fetcher)});}
+   if(path==='auth/code/send'&&request.method==='POST')return await sendCode(request,env,now,fetcher);
+   if(path==='auth/code/verify'&&request.method==='POST')return await verifyCode(request,env,now);
+   // The private beta signs in with emailed codes only; passwords and Google stay off so the invite list holds.
+   if(betaMode(env)&&(path.startsWith('auth/google/')||path==='auth/register'||path==='auth/forgot'||path==='auth/reset'))throw new ProductError('Heartbeat is in a private test. Sign in with the code we email you.',403);
    if(path==='auth/google/start'&&request.method==='GET')return await startGoogle(request,env,now);
    if(path==='auth/google/callback'&&request.method==='GET')return await finishGoogle(request,env,now,fetcher);
-   if(path==='auth/session'&&request.method==='GET') {const auth=await authenticate(request,env,now);const version=auth?await db(env).prepare('SELECT preferences_version FROM hb_worlds WHERE id=? AND owner_id=?').bind(`world-${auth.user.id}`,auth.user.id).first<{preferences_version:number}>():null;const linked=auth?!!await db(env).prepare('SELECT user_id FROM hb_google_identities WHERE user_id=?').bind(auth.user.id).first():false;return json(auth?{profileVersion:version?.preferences_version??0,user:publicUser(auth.user),access:await accessFor(auth,env,now,localDevelopment(request,env)),local:localDevelopment(request,env),billingReady:billingReady(env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env),googleLinked:linked}:{user:null,local:localDevelopment(request,env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env)});}
+   if(path==='auth/session'&&request.method==='GET') {const auth=await authenticate(request,env,now);const version=auth?await db(env).prepare('SELECT preferences_version FROM hb_worlds WHERE id=? AND owner_id=?').bind(`world-${auth.user.id}`,auth.user.id).first<{preferences_version:number}>():null;const linked=auth?!!await db(env).prepare('SELECT user_id FROM hb_google_identities WHERE user_id=?').bind(auth.user.id).first():false;return json(auth?{profileVersion:version?.preferences_version??0,user:publicUser(auth.user),access:await accessFor(auth,env,now,localDevelopment(request,env)),local:localDevelopment(request,env),billingReady:billingReady(env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env)&&!betaMode(env),googleLinked:linked,beta:betaMode(env),owner:isOwner(env,auth.user.email)&&!!auth.user.verified}:{user:null,local:localDevelopment(request,env),emailAvailable:!!env.HEARTBEAT_EMAIL_API_KEY&&!!env.HEARTBEAT_EMAIL_FROM,googleAvailable:googleConfigured(env)&&!betaMode(env),beta:betaMode(env)});}
    if(['auth/register','auth/login','auth/forgot'].includes(path)&&request.method==='POST') {
     const input=await readJSON(request,4096),address=email(input.email);await authRate(request,env,now,address);
     if(path==='auth/register') {
@@ -44,6 +49,7 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
      if(user)try{await sendToken(env,user,'reset',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);}catch{/* Do not disclose whether the address exists. */}
      return json({message:'If an account exists and email delivery is available, a reset link is on its way.'});
     }
+    if(betaMode(env)&&!await invited(env,address))throw new ProductError('Heartbeat is in a private test. Sign in with the code we email you.',403);
     if(typeof input.password!=='string'||input.password.length>128)throw new ProductError('Email or password did not match.',401);
     const matches=await passwordMatches(input.password,user?.password_hash||'missing-account');if(!user||!matches||(user.lifecycle??'active')!=='active')throw new ProductError('Email or password did not match.',401);
     if(passwordNeedsRehash(user.password_hash))await db(env).prepare('UPDATE hb_users SET password_hash=? WHERE id=? AND password_hash=? AND credential_epoch=?').bind(await passwordHash(input.password),user.id,user.password_hash,user.credential_epoch||0).run();
@@ -84,6 +90,8 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
     if(changed[0].meta.changes!==1)throw new ProductError('Your account changed. Sign in again before changing your password.',409);
     return await revoke(request,env);
    }
+   if(path==='presence'&&request.method==='POST')return await presence(request,env,user,now);
+   if(path.startsWith('admin/'))return await adminRoute(request,env,auth,path,now);
    if(path==='auth/resend'&&request.method==='POST') {await rate(env,`verify:${user.id}`,now,2);const input=await readJSON(request,4096);await sendToken(env,user,'verify',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);return json({message:'Verification email sent.'});}
    if(path==='preferences') {
     if(request.method==='GET')return json(await profileFor(env,user.id,{},now));

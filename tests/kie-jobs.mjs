@@ -20,7 +20,7 @@ try{
  await runArtworkJob(f.env,job.id,deps);
  const done=await (await f.call(`generation?requestId=${requestId}`,undefined,{cookie:a.cookie})).json();
  assert.equal(done.status,'ready');assert.equal(kieCalls,1);
- assert.deepEqual(kieConfig,{apiKey:'fake-kie-key',model:'z-image'});
+ assert.deepEqual(kieConfig,{apiKey:'fake-kie-key',model:'z-image',dimTooBright:false});
  assert.equal(f.sqlite.prepare("SELECT model FROM hb_provider_operations WHERE kind='image'").get().model,'kie:z-image','The operating ledger records which painter was used');
  await runArtworkJob(f.env,job.id,deps);assert.equal(kieCalls,1,'A finished job never asks Kie again');
  // Without a key, generation is refused before any provider work.

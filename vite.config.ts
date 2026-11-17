@@ -60,7 +60,10 @@ export default defineConfig(async ({ command }) => {
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
+  // Self-hosted beta: the tunnel forwards the public host name to `vite preview`.
+  const publicHost = process.env.HEARTBEAT_PUBLIC_HOST;
   return {
+    ...(publicHost ? { preview: { host: "127.0.0.1", allowedHosts: [publicHost] } } : {}),
     server: {
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }

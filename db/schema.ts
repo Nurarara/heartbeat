@@ -39,6 +39,14 @@ export const generations=sqliteTable("generations",{
   "usage":text("usage"),
   "created_at":integer("created_at").notNull()
 },t=>[]);
+export const hbActivity=sqliteTable("hb_activity",{
+  "id":text("id").notNull().primaryKey(),
+  "user_id":text("user_id"),
+  "email":text("email").notNull().default(""),
+  "kind":text("kind").notNull(),
+  "detail":text("detail").notNull().default(""),
+  "created_at":integer("created_at").notNull()
+},t=>[index("hb_activity_time").on(t["created_at"])]);
 export const hbArtworkOutbox=sqliteTable("hb_artwork_outbox",{
   "job_id":text("job_id").notNull().primaryKey(),
   "state":text("state").notNull().default("pending"),
@@ -204,6 +212,12 @@ export const hbGoogleStates=sqliteTable("hb_google_states",{
   "credential_epoch":integer("credential_epoch"),
   "expires":integer("expires").notNull()
 },t=>[index("hb_google_states_expiry").on(t["expires"])]);
+export const hbInvites=sqliteTable("hb_invites",{
+  "email":text("email").notNull().primaryKey(),
+  "note":text("note").notNull().default(""),
+  "invited_by":text("invited_by").notNull(),
+  "invited_at":integer("invited_at").notNull()
+},t=>[]);
 export const hbJobs=sqliteTable("hb_jobs",{
   "id":text("id").notNull().primaryKey(),
   "owner":text("owner").notNull(),
@@ -234,6 +248,14 @@ export const hbLikes=sqliteTable("hb_likes",{
   "user_id":text("user_id").notNull(),
   "attempt_id":text("attempt_id").notNull()
 },t=>[uniqueIndex("hb_like_owner_art").on(t["user_id"],t["attempt_id"])]);
+export const hbLoginCodes=sqliteTable("hb_login_codes",{
+  "email":text("email").notNull().primaryKey(),
+  "code_hash":text("code_hash").notNull(),
+  "attempts":integer("attempts").notNull().default(0),
+  "expires":integer("expires").notNull(),
+  "created_at":integer("created_at").notNull()
+},t=>[index("hb_login_codes_expiry").on(t["expires"]),
+check("hb_login_codes_check_0",sql.raw("attempts>=0"))]);
 export const hbOperatingDays=sqliteTable("hb_operating_days",{
   "day":text("day").notNull().primaryKey(),
   "attempts":integer("attempts").notNull().default(0),
@@ -392,6 +414,18 @@ export const hbUsers=sqliteTable("hb_users",{
   "credential_epoch":integer("credential_epoch").notNull().default(0)
 },t=>[uniqueIndex("hb_users_email_unique").on(t["email"]),
 check("hb_users_check_0",sql.raw("lifecycle IN ('active','deleting','deleted')"))]);
+export const hbViewSessions=sqliteTable("hb_view_sessions",{
+  "id":text("id").notNull().primaryKey(),
+  "user_id":text("user_id").notNull(),
+  "device":text("device").notNull().default("unknown"),
+  "mood":text("mood").notNull().default("auto"),
+  "started_at":integer("started_at").notNull(),
+  "last_seen":integer("last_seen").notNull(),
+  "seconds":integer("seconds").notNull().default(0)
+},t=>[index("hb_view_sessions_seen").on(t["last_seen"]),
+index("hb_view_sessions_user").on(t["user_id"],t["last_seen"]),
+foreignKey({name:"hb_view_sessions_user_id_fk",columns:[t["user_id"]],foreignColumns:[hbUsers["id"]]}).onDelete("cascade").onUpdate("no action"),
+check("hb_view_sessions_check_0",sql.raw("seconds>=0"))]);
 export const hbWorlds=sqliteTable("hb_worlds",{
   "id":text("id").notNull().primaryKey(),
   "owner_id":text("owner_id").notNull(),

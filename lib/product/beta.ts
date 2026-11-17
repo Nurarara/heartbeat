@@ -1,0 +1,213 @@
+// Private beta: invite-only sign-in with emailed six-digit codes, free pictures,
+// viewing-time tracking and the owner's dashboard data.
+import { authRate, email, session, type Auth, type User } from './auth.ts';
+import { db, hash, json, localDevelopment, ProductError, rate, readJSON, type ProductEnv } from './core.ts';
+import { ensureDefaultWorld } from './profiles.ts';
+import { adjustPictureAllowance } from './adjustments.ts';
+import { parseMood } from '../moods.ts';
+
+export const CODE_TTL = 10 * 60000, CODE_ATTEMPTS = 5, BETA_GRANT = 5000, MAX_DATE = 8640000000000000;
+export const betaMode = (env: ProductEnv) => env.HEARTBEAT_BETA === 'true';
+export const ownerEmail = (env: ProductEnv) => (env.HEARTBEAT_OWNER_EMAIL || '').trim().toLowerCase();
+export const isOwner = (env: ProductEnv, address: string) => !!ownerEmail(env) && address === ownerEmail(env);
+export const betaSeats = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_SEATS, 25, 1, 500);
+/** Minutes between new pictures for beta testers. */
+export const betaCadence = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_CADENCE_MINUTES, 10, 2, 240) * 60000;
+/** New pictures one tester can start per UTC day, so one screen left on overnight cannot use everyone's budget. */
+export const betaDailyPictures = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_USER_DAILY, 36, 1, 1000);
+function clamp(value: string | undefined, fallback: number, low: number, high: number) { const n = Number(value ?? fallback); return Number.isSafeInteger(n) && n >= low && n <= high ? n : fallback; }
+const dayStart = (now: number) => Math.floor(now / 86400000) * 86400000;
+
+export async function logActivity(env: ProductEnv, entry: { userId?: string | null; email?: string; kind: string; detail?: string }, now: number) {
+  try { await db(env).prepare('INSERT INTO hb_activity(id,user_id,email,kind,detail,created_at) VALUES (?,?,?,?,?,?)').bind(crypto.randomUUID(), entry.userId ?? null, entry.email || '', entry.kind, (entry.detail || '').slice(0, 200), now).run(); }
+  catch { /* Tracking never blocks the product. */ }
+}
+
+export async function invited(env: ProductEnv, address: string) {
+  return isOwner(env, address) || !!await db(env).prepare('SELECT email FROM hb_invites WHERE email=?').bind(address).first();
+}
+
+/** A uniform six-digit code. */
+export function sixDigits(): string {
+  const values = new Uint32Array(1), limit = Math.floor(0x100000000 / 1000000) * 1000000;
+  do crypto.getRandomValues(values); while (values[0] >= limit);
+  return String(values[0] % 1000000).padStart(6, '0');
+}
+const codeHash = (address: string, code: string) => hash(`heartbeat-login:${address}:${code}`);
+
+async function mailCode(env: ProductEnv, address: string, code: string, fetcher: typeof fetch) {
+  const text = `Your Heartbeat sign-in code is ${code}\n\nIt works for 10 minutes. If you didn't ask for it, you can ignore this email.\n\nHeartbeat · AI for ambience`;
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:420px;margin:auto;padding:32px 24px;color:#1d1b19"><p style="font-size:14px;letter-spacing:.12em;color:#8a7f73;margin:0 0 24px">HEARTBEAT</p><p style="font-size:16px;margin:0 0 12px">Your sign-in code</p><p style="font-size:36px;letter-spacing:.3em;font-weight:600;margin:0 0 24px">${code}</p><p style="font-size:14px;color:#6b635b;margin:0">It works for 10 minutes. If you didn't ask for it, you can ignore this email.</p></div>`;
+  let response: Response;
+  try { response = await fetcher('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.HEARTBEAT_EMAIL_FROM, to: [address], subject: `${code} is your Heartbeat code`, text, html }) }) }
+  catch { throw new ProductError('The code email could not be sent. Please try again in a minute.', 503); }
+  if (!response.ok) throw new ProductError('The code email could not be sent. Please try again in a minute.', 503);
+}
+
+/** Step 1: email a code. In the beta only invited addresses (and the owner) receive one. */
+export async function sendCode(request: Request, env: ProductEnv, now: number, fetcher: typeof fetch) {
+  const input = await readJSON(request, 1024), address = email(input.email), local = localDevelopment(request, env);
+  await authRate(request, env, now, address);
+  await rate(env, `code-send:${address}`, now, 5);
+  if (!local && (!env.HEARTBEAT_EMAIL_API_KEY || !env.HEARTBEAT_EMAIL_FROM)) throw new ProductError('Email sign-in is not configured yet.', 503);
+  if (betaMode(env) && !await invited(env, address)) {
+    await logActivity(env, { email: address, kind: 'not_invited' }, now);
+    throw new ProductError('Heartbeat is in a small private test right now. This email isn’t on the invite list yet.', 403);
+  }
+  const code = sixDigits();
+  await db(env).prepare('INSERT INTO hb_login_codes(email,code_hash,attempts,expires,created_at) VALUES (?,?,0,?,?) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,attempts=0,expires=excluded.expires,created_at=excluded.created_at').bind(address, await codeHash(address, code), now + CODE_TTL, now).run();
+  await logActivity(env, { email: address, kind: 'code_sent' }, now);
+  // Only on this computer without email configured: show the code instead of mailing it.
+  if (local && (!env.HEARTBEAT_EMAIL_API_KEY || !env.HEARTBEAT_EMAIL_FROM)) return json({ sent: true, devCode: code });
+  await mailCode(env, address, code, fetcher);
+  return json({ sent: true });
+}
+
+/** Step 2: check the code, create the account on first use, start a session. */
+export async function verifyCode(request: Request, env: ProductEnv, now: number) {
+  const input = await readJSON(request, 1024), address = email(input.email);
+  await authRate(request, env, now, address);
+  const code = typeof input.code === 'string' ? input.code.replace(/\s/g, '') : '';
+  if (!/^\d{6}$/.test(code)) throw new ProductError('Enter the six-digit code from the email.');
+  const database = db(env);
+  // Count the attempt before comparing, so parallel guesses cannot exceed the limit.
+  const claimed = await database.prepare('UPDATE hb_login_codes SET attempts=attempts+1 WHERE email=? AND expires>? AND attempts<? RETURNING code_hash').bind(address, now, CODE_ATTEMPTS).first<{ code_hash: string }>();
+  const expected = await codeHash(address, code);
+  let diff = claimed ? 0 : 1; const actual = claimed?.code_hash || '0'.repeat(64);
+  for (let i = 0; i < 64; i++) diff |= (expected.charCodeAt(i) || 0) ^ (actual.charCodeAt(i) || 0);
+  if (diff !== 0) throw new ProductError('That code didn’t match or has expired. Check the email or send a new code.', 401);
+  const used = await database.prepare('DELETE FROM hb_login_codes WHERE email=? AND code_hash=?').bind(address, expected).run();
+  if (!used.meta.changes) throw new ProductError('That code was already used. Send a new code.', 401);
+  if (betaMode(env) && !await invited(env, address)) throw new ProductError('This email isn’t on the invite list.', 403);
+  let user = await database.prepare('SELECT * FROM hb_users WHERE email=?').bind(address).first<User>();
+  const created = !user;
+  if (!user) {
+    user = { id: crypto.randomUUID(), email: address, password_hash: 'code-only', verified: 1, created_at: now, credential_epoch: 0 };
+    try { await database.batch([database.prepare('INSERT INTO hb_users(id,email,password_hash,verified,created_at) VALUES (?,?,?,?,?)').bind(user.id, address, 'code-only', 1, now), database.prepare('INSERT INTO hb_billing(user_id) VALUES (?)').bind(user.id)]); }
+    catch { user = await database.prepare('SELECT * FROM hb_users WHERE email=?').bind(address).first<User>(); if (!user) throw new ProductError('Your account could not be created. Please try again.', 503); }
+    await ensureDefaultWorld(env, user.id, now);
+  } else if (!user.verified) {
+    // The code proves the address.
+    await database.prepare("UPDATE hb_users SET verified=1 WHERE id=? AND lifecycle='active'").bind(user.id).run(); user = { ...user, verified: 1 };
+  }
+  if ((user.lifecycle ?? 'active') !== 'active') throw new ProductError('This account is being deleted.', 403);
+  if (betaMode(env)) await grantBetaAllowance(env, user, now);
+  await logActivity(env, { userId: user.id, email: address, kind: created ? 'joined' : 'sign_in' }, now);
+  return session(request, env, user, now, 'code');
+}
+
+/** Free pictures for the test. Idempotent: one grant per account. */
+export async function grantBetaAllowance(env: ProductEnv, user: Pick<User, 'id' | 'created_at'>, now: number) {
+  try { await adjustPictureAllowance(env, { requestId: `beta-grant:${user.id}`, userId: user.id, periodStart: user.created_at, periodEnd: MAX_DATE, delta: BETA_GRANT, actor: 'heartbeat-beta', reason: 'Free pictures for the private beta test', now }); }
+  catch (error) { if (!(error instanceof ProductError) || error.status !== 409) throw error; /* A paid or changed period keeps its own allowance. */ }
+}
+
+/** Extra limits on generation during the beta. Returns a reason when blocked. */
+export async function betaBlock(env: ProductEnv, user: Pick<User, 'id' | 'email'>, now: number): Promise<string | null> {
+  if (!betaMode(env)) return null;
+  if (!await invited(env, user.email)) return 'This account is no longer on the test invite list.';
+  const today = await db(env).prepare('SELECT COUNT(*) AS n FROM hb_jobs WHERE owner=? AND created_at>=?').bind(user.id, dayStart(now)).first<{ n: number }>();
+  if ((today?.n || 0) >= betaDailyPictures(env)) return 'That’s all the fresh pictures for today. Your screen keeps showing them, and new ones start again tomorrow.';
+  return null;
+}
+
+export function deviceOf(agent: string | null) {
+  const value = (agent || '').toLowerCase();
+  if (/smart-?tv|tizen|webos|bravia|hbbtv|appletv|googletv|android tv|aft[a-z]/.test(value)) return 'tv';
+  if (/ipad|tablet|(android(?!.*mobile))/.test(value)) return 'tablet';
+  if (/iphone|android|mobile/.test(value)) return 'phone';
+  return agent ? 'desktop' : 'unknown';
+}
+
+/** A screen showing Heartbeat says it is still there about once a minute. */
+export async function presence(request: Request, env: ProductEnv, user: User, now: number) {
+  const input = await readJSON(request, 512);
+  if (typeof input.session !== 'string' || !/^[a-f0-9-]{36}$/.test(input.session)) throw new ProductError('Invalid screen session.');
+  await rate(env, `presence:${user.id}`, now, 30, 60000);
+  const mood = parseMood(input.mood), device = deviceOf(request.headers.get('user-agent')), database = db(env);
+  const prior = await database.prepare('SELECT user_id,mood FROM hb_view_sessions WHERE id=?').bind(input.session).first<{ user_id: string; mood: string }>();
+  if (prior && prior.user_id !== user.id) throw new ProductError('Invalid screen session.');
+  // Gaps over 150 seconds mean the screen was hidden or asleep; that time is not counted.
+  await database.prepare('INSERT INTO hb_view_sessions(id,user_id,device,mood,started_at,last_seen,seconds) VALUES (?,?,?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET seconds=seconds+CASE WHEN ?-last_seen BETWEEN 0 AND 150000 THEN CAST(ROUND((?-last_seen)/1000.0) AS INTEGER) ELSE 0 END,last_seen=MAX(last_seen,?),mood=excluded.mood WHERE user_id=excluded.user_id').bind(input.session, user.id, device, mood, now, now, now, now, now).run();
+  if (!prior) await logActivity(env, { userId: user.id, email: user.email, kind: 'screen_open', detail: device }, now);
+  else if (prior.mood !== mood) await logActivity(env, { userId: user.id, email: user.email, kind: 'mood', detail: `${prior.mood} → ${mood}` }, now);
+  return json({ ok: true });
+}
+
+function requireOwner(env: ProductEnv, auth: Auth) {
+  // Hidden from everyone else: the route looks like it does not exist.
+  if (!isOwner(env, auth.user.email) || !auth.user.verified) throw new ProductError('This page could not be found.', 404);
+}
+
+/** Owner-only routes under /api/product/admin/. */
+export async function adminRoute(request: Request, env: ProductEnv, auth: Auth, path: string, now: number) {
+  requireOwner(env, auth);
+  const database = db(env);
+  if (path === 'admin/invite' && request.method === 'POST') {
+    const input = await readJSON(request, 1024), address = email(input.email), note = typeof input.note === 'string' ? input.note.trim().slice(0, 80) : '';
+    const count = await database.prepare('SELECT COUNT(*) AS n FROM hb_invites WHERE email<>?').bind(ownerEmail(env)).first<{ n: number }>();
+    const exists = await database.prepare('SELECT email FROM hb_invites WHERE email=?').bind(address).first();
+    if (!exists && !isOwner(env, address) && (count?.n || 0) >= betaSeats(env)) throw new ProductError(`The test is full (${betaSeats(env)} places). Remove someone first.`, 409);
+    await database.prepare('INSERT INTO hb_invites(email,note,invited_by,invited_at) VALUES (?,?,?,?) ON CONFLICT(email) DO UPDATE SET note=excluded.note').bind(address, note, auth.user.email, now).run();
+    if (!exists) await logActivity(env, { email: address, kind: 'invited', detail: note }, now);
+    return json({ invited: address });
+  }
+  if (path === 'admin/uninvite' && request.method === 'POST') {
+    const address = email((await readJSON(request, 1024)).email);
+    if (isOwner(env, address)) throw new ProductError('You can’t remove yourself.');
+    const user = await database.prepare('SELECT id FROM hb_users WHERE email=?').bind(address).first<{ id: string }>();
+    await database.batch([
+      database.prepare('DELETE FROM hb_invites WHERE email=?').bind(address),
+      database.prepare('DELETE FROM hb_login_codes WHERE email=?').bind(address),
+      ...(user ? [database.prepare('UPDATE hb_users SET credential_epoch=credential_epoch+1 WHERE id=?').bind(user.id), database.prepare('DELETE FROM hb_sessions WHERE user_id=?').bind(user.id), database.prepare('DELETE FROM hb_devices WHERE owner=?').bind(user.id)] : []),
+    ]);
+    await logActivity(env, { userId: user?.id, email: address, kind: 'removed' }, now);
+    return json({ removed: address });
+  }
+  if (path === 'admin/overview' && request.method === 'GET') return json(await overview(env, now, new URL(request.url).searchParams));
+  throw new ProductError('This page could not be found.', 404);
+}
+
+type Row = Record<string, number | string | null>;
+export async function overview(env: ProductEnv, now: number, params: URLSearchParams) {
+  const database = db(env), owner = ownerEmail(env);
+  // The viewer's time zone offset in minutes (Date#getTimezoneOffset), so days match their calendar.
+  const tz = Math.max(-840, Math.min(840, Number(params.get('tz')) || 0)), shift = -tz * 60000;
+  const days = Math.max(7, Math.min(60, Number(params.get('days')) || 14));
+  const localToday = Math.floor((now + shift) / 86400000) * 86400000 - shift, since = localToday - (days - 1) * 86400000, live = now - 120000;
+  const all = async (sql: string, ...values: unknown[]) => (await database.prepare(sql).bind(...values).all<Row>()).results;
+  const testers = await all(`WITH people AS (SELECT email,note,invited_at FROM hb_invites UNION SELECT ?,'You (owner)',0 WHERE ?<>'')
+    SELECT p.email,p.note,p.invited_at,u.id AS user_id,u.created_at AS joined_at,
+     (SELECT MAX(authenticated_at) FROM hb_sessions s WHERE s.user_id=u.id) AS last_sign_in,
+     (SELECT MAX(last_seen) FROM hb_view_sessions v WHERE v.user_id=u.id) AS last_seen,
+     (SELECT COUNT(*) FROM hb_view_sessions v WHERE v.user_id=u.id AND v.seconds>0) AS sessions,
+     (SELECT COALESCE(SUM(seconds),0) FROM hb_view_sessions v WHERE v.user_id=u.id) AS seconds,
+     (SELECT COALESCE(SUM(seconds),0) FROM hb_view_sessions v WHERE v.user_id=u.id AND v.started_at>=?) AS seconds_today,
+     (SELECT COUNT(*) FROM ai_attempts a WHERE a.owner=u.id AND a.art_key IS NOT NULL) AS pictures,
+     (SELECT COUNT(*) FROM ai_attempts a WHERE a.owner=u.id AND a.art_key IS NOT NULL AND a.created_at>=?) AS pictures_today,
+     (SELECT mood FROM hb_view_sessions v WHERE v.user_id=u.id ORDER BY last_seen DESC LIMIT 1) AS mood,
+     (SELECT device FROM hb_view_sessions v WHERE v.user_id=u.id ORDER BY last_seen DESC LIMIT 1) AS device
+    FROM people p LEFT JOIN hb_users u ON u.email=p.email ORDER BY last_seen IS NULL, last_seen DESC, p.invited_at DESC`, owner, owner, localToday, localToday);
+  const daily = await all(`SELECT CAST((started_at+?)/86400000 AS INTEGER) AS bucket, SUM(seconds) AS seconds, COUNT(DISTINCT user_id) AS viewers, SUM(CASE WHEN seconds>0 THEN 1 ELSE 0 END) AS sessions FROM hb_view_sessions WHERE started_at>=? GROUP BY bucket`, shift, since);
+  const pictures = await all(`SELECT CAST((created_at+?)/86400000 AS INTEGER) AS bucket, COUNT(*) AS pictures FROM ai_attempts WHERE art_key IS NOT NULL AND created_at>=? GROUP BY bucket`, shift, since);
+  const hourly = await all(`SELECT CAST(((started_at+?)%86400000)/3600000 AS INTEGER) AS hour, SUM(seconds) AS seconds FROM hb_view_sessions WHERE started_at>=? GROUP BY hour`, shift, since);
+  const moods = await all(`SELECT mood, SUM(seconds) AS seconds FROM hb_view_sessions WHERE started_at>=? GROUP BY mood ORDER BY seconds DESC`, since);
+  const devices = await all(`SELECT device, SUM(seconds) AS seconds, COUNT(*) AS sessions FROM hb_view_sessions WHERE started_at>=? GROUP BY device ORDER BY seconds DESC`, since);
+  const liveNow = await all(`SELECT v.id,u.email,v.device,v.mood,v.started_at,v.last_seen,v.seconds FROM hb_view_sessions v JOIN hb_users u ON u.id=v.user_id WHERE v.last_seen>=? ORDER BY v.started_at`, live);
+  const sessions = await all(`SELECT v.id,u.email,v.device,v.mood,v.started_at,v.last_seen,v.seconds FROM hb_view_sessions v JOIN hb_users u ON u.id=v.user_id WHERE v.seconds>0 OR v.last_seen>=? ORDER BY v.last_seen DESC LIMIT 40`, live);
+  const activity = await all(`SELECT kind,email,detail,created_at FROM hb_activity ORDER BY created_at DESC LIMIT 60`);
+  const utcDay = new Date(now).toISOString().slice(0, 10);
+  const spend = await all(`SELECT day, spent_micros, reserved_micros, attempts FROM hb_operating_days WHERE day>=? ORDER BY day`, new Date(since).toISOString().slice(0, 10));
+  const today = spend.find(row => row.day === utcDay);
+  const series = Array.from({ length: days }, (_, index) => {
+    const day = Math.floor((since + shift) / 86400000) + index, d = daily.find(row => Number(row.bucket) === day), p = pictures.find(row => Number(row.bucket) === day);
+    return { day: new Date(day * 86400000).toISOString().slice(0, 10), seconds: Number(d?.seconds || 0), viewers: Number(d?.viewers || 0), sessions: Number(d?.sessions || 0), pictures: Number(p?.pictures || 0) };
+  });
+  return {
+    generatedAt: now, days, seats: betaSeats(env), beta: betaMode(env), cadenceMinutes: betaCadence(env) / 60000, dailyPicturesPerTester: betaDailyPictures(env),
+    budget: { capMicros: Number(env.HEARTBEAT_DAILY_BUDGET_MICROS) || 0, spentMicros: Number(today?.spent_micros || 0), reservedMicros: Number(today?.reserved_micros || 0), attempts: Number(today?.attempts || 0), imageEstimateMicros: Number(env.HEARTBEAT_IMAGE_ESTIMATE_MICROS) || 0, painter: env.HEARTBEAT_IMAGE_PROVIDER || 'cloudflare', history: spend },
+    testers, series, hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, seconds: Number(hourly.find(row => Number(row.hour) === hour)?.seconds || 0) })),
+    moods, devices, liveNow, sessions, activity,
+  };
+}
+
