@@ -22,6 +22,9 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
   const [recoveryAt,setRecoveryAt]=useState(0);
   const recovery=useRef<Recovery|null>(null),readyRequest=useRef<{attemptId:string;requestId:string}|null>(null);
   const clearRecovery=useCallback(()=>{const id=recovery.current?.id;recovery.current=null;readyRequest.current=null;setWaiting(false);try{const stored=JSON.parse(localStorage.getItem(REQUEST_KEY)||'null');if(id&&stored?.id===id)localStorage.removeItem(REQUEST_KEY);}catch{/* Browser storage is optional. */}},[]);
+  // A new city never waits for the previous city's next-picture time.
+  const lastLocation = useRef(inputs.base?.locationKey);
+  useEffect(() => { const key = inputs.base?.locationKey; if (!key || key === lastLocation.current) return; const first = lastLocation.current === undefined; lastLocation.current = key; if (!first) queueMicrotask(() => setNextAt(0)); }, [inputs.base?.locationKey]);
   const latest = useRef(inputs), inFlight = useRef(false), attempted = useRef({ id: '', at: 0 }), acked = useRef(new Set<string>());
   useLayoutEffect(() => { latest.current = inputs; }, [inputs]);
   const refresh = useCallback(async () => {

@@ -15,6 +15,9 @@ export default {
     const runtime=env as unknown as ProductEnv,request=selfHostedRequest(incoming,runtime);
     try{assertConfiguration(runtime);await assertSchema(runtime);}catch{return Response.json({error:'Application configuration needs operator attention.'},{status:503});}
     const path=new URL(request.url).pathname;
+    // Private test: the app's home is the display (which sends signed-out visitors to sign-in).
+    // The public landing page lives at heartbeatart.co.uk.
+    if(path==='/'&&runtime.HEARTBEAT_BETA==='true'&&(request.method==='GET'||request.method==='HEAD'))return Response.redirect(new URL('/display',request.url).href,302);
     if((/^\/api\/(heartbeat|world|pulse|display|art)(?:\/|$)/.test(path)||['/local-study','/story','/pulse','/prototype'].includes(path)||path.startsWith('/prototype/'))&&!operatorStudyAllowed(request,runtime))return new Response('Not found',{status:404});
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and

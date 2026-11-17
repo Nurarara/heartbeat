@@ -56,6 +56,9 @@ export async function updatePreferences(env:ProductEnv,owner:string,input:Record
  const samePlace=p.preferences&&JSON.stringify(p.preferences.location)===JSON.stringify(preferences.location);
  const changed=await db(env).prepare("UPDATE hb_worlds SET preferences=?,preferences_version=preferences_version+1,memory=CASE WHEN ? THEN memory ELSE NULL END,memory_version=memory_version+CASE WHEN ? THEN 0 ELSE 1 END,updated_at=? WHERE id=? AND owner_id=? AND preferences_version=? AND EXISTS(SELECT 1 FROM hb_users WHERE id=? AND lifecycle='active')").bind(JSON.stringify(preferences),samePlace?1:0,samePlace?1:0,now,p.worldId,owner,version,owner).run();
  if(changed.meta.changes!==1)throw new ProductError('Your preferences changed on another screen. Reload before saving.',409);
+ // A new city starts its first picture straight away instead of waiting out the last city's rhythm.
+ // Daily limits and the spending cap still apply.
+ if(p.preferences&&!samePlace)await db(env).prepare('UPDATE ai_sessions SET next_at=0 WHERE id=?').bind(owner).run();
  return {...await profileFor(env,owner,{worldId:p.worldId,surfaceId:p.surfaceId},now),saved:true};
 }
 export function presentationPolicy(preferences:AmbientPreferences,surface:Surface,now:number) {

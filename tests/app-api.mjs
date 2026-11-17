@@ -95,5 +95,16 @@ assert.equal((await app('state', undefined, sam.token)).status, 200);
 await f.call('admin/uninvite', { email: 'sam@example.test' }, { cookie: web });
 assert.equal((await app('state', undefined, sam.token)).status, 401);
 
+// Changing city clears the wait for the next picture, so the new city starts straight away.
+const ownerId = f.sqlite.prepare('SELECT id FROM hb_users WHERE email=?').get(OWNER).id;
+f.sqlite.prepare('INSERT OR REPLACE INTO ai_sessions(id,expires,next_at) VALUES (?,?,?)').run(ownerId, f.now() + 86400000, f.now() + 600000);
+const current = await (await f.call('preferences', undefined, { cookie: web })).json();
+const sf = { ...current.preferences, location: { name: 'San Francisco', country: 'United States', latitude: 37.77, longitude: -122.42, timezone: 'America/Los_Angeles' } };
+assert.equal((await f.call('preferences', { preferences: { ...current.preferences, mood: 'calm' }, expectedVersion: current.version }, { cookie: web })).status, 200);
+assert.ok(f.sqlite.prepare('SELECT next_at FROM ai_sessions WHERE id=?').get(ownerId).next_at > f.now(), 'Same city keeps the rhythm');
+const again = await (await f.call('preferences', undefined, { cookie: web })).json();
+assert.equal((await f.call('preferences', { preferences: sf, expectedVersion: again.version }, { cookie: web })).status, 200);
+assert.equal(f.sqlite.prepare('SELECT next_at FROM ai_sessions WHERE id=?').get(ownerId).next_at, 0, 'A new city starts at once');
+
 f.close();
 console.log('app api: ok');

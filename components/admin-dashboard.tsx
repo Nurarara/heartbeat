@@ -106,7 +106,7 @@ export function AdminDashboard() {
 
   return <div className="hp-site ad-root">
     <header className="ad-top"><Brand /><div><h1>Test dashboard</h1><p>Only you can see this page. Updated {new Date(now).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · refreshes every 30 s</p></div>
-      <div className="ad-controls"><label>Range<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option></select></label><button className="ad-button" onClick={() => void load()}><RefreshCw size={14} /> Refresh</button><a className="ad-button" href="/display">Open display</a></div></header>
+      <div className="ad-controls"><label>Range<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option></select></label><button className="ad-button" onClick={() => void load()}><RefreshCw size={14} /> Refresh</button><a className="ad-button" href="/app">← Back to studio</a><a className="ad-button" href="/display">Open display</a></div></header>
     {error && <p className="ad-alert" role="alert">{error}</p>}
 
     <section className="ad-stats">
