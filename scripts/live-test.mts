@@ -1,4 +1,4 @@
-// Live intelligence test: real local time + live weather -> Cloudflare director -> Kie painter.
+// Live intelligence test: real local time + live weather -> Cloudflare director -> Kie or Azure FLUX painter.
 // Runs a fixed number of attempts, then stops on its own. Credentials come from .dev.vars only.
 //   npm run live:test                      (London, 5 pictures, every 2 minutes, z-image)
 //   npm run live:test count=12 every=10 model=seedream/5-5-text-to-image city=Kyoto
@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cloudflareProvider, ProviderFailure } from '../lib/ai/cloudflare.ts';
 import { kieImageProvider, KIE_MODELS, DEFAULT_KIE_MODEL } from '../lib/ai/kie.ts';
+import { azureFluxProvider, azureFluxEndpoint, AZURE_FLUX_MODELS, DEFAULT_AZURE_FLUX_MODEL } from '../lib/ai/azure-flux.ts';
 import { collectContext, searchPlaces } from '../lib/context.ts';
 import { planMoment, rememberMoment, type StoryMemory } from '../lib/ambient-director.ts';
 import { creativePacket, type CreativeProposal } from '../lib/creative.ts';
@@ -46,14 +47,18 @@ async function vars() {
       if (match) env[match[1]] = match[2].replace(/^["']|["']$/g, '');
     }
   } catch { /* fall through to the checks below */ }
-  return { ...env, ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(CLOUDFLARE_|KIE_|HEARTBEAT_)/.test(key))) as Record<string, string> };
+  return { ...env, ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(CLOUDFLARE_|KIE_|AZURE_IMAGE_|HEARTBEAT_)/.test(key))) as Record<string, string> };
 }
 
 const env = await vars();
-const model = args.get('model') || env.HEARTBEAT_KIE_MODEL || DEFAULT_KIE_MODEL;
-const missing = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'KIE_API_KEY'].filter(key => !env[key] || /REPLACE|GENERATED/.test(env[key]));
+// painter=azure uses FLUX.2 on Microsoft Foundry (Azure credits); the default is Kie.
+const azure = (args.get('painter') || (env.HEARTBEAT_IMAGE_PROVIDER === 'azure' ? 'azure' : 'kie')) === 'azure';
+const model = args.get('model') || (azure ? env.AZURE_IMAGE_MODEL || DEFAULT_AZURE_FLUX_MODEL : env.HEARTBEAT_KIE_MODEL || DEFAULT_KIE_MODEL);
+const missing = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', ...(azure ? ['AZURE_IMAGE_ENDPOINT', 'AZURE_IMAGE_KEY'] : ['KIE_API_KEY'])].filter(key => !env[key] || /REPLACE|GENERATED/.test(env[key]));
 if (missing.length) { console.error(`Missing in .dev.vars: ${missing.join(', ')}`); process.exit(1); }
-if (!(model in KIE_MODELS)) { console.error(`Unknown Kie model "${model}". Use one of: ${Object.keys(KIE_MODELS).join(', ')}`); process.exit(1); }
+if (azure && !azureFluxEndpoint(env.AZURE_IMAGE_ENDPOINT)) { console.error('AZURE_IMAGE_ENDPOINT should look like https://<name>.services.ai.azure.com/providers/blackforestlabs/v1/flux-2-pro (no ?api-version).'); process.exit(1); }
+if (azure ? !(AZURE_FLUX_MODELS as readonly string[]).includes(model) : !(model in KIE_MODELS)) { console.error(`Unknown model "${model}". Use one of: ${(azure ? [...AZURE_FLUX_MODELS] : Object.keys(KIE_MODELS)).join(', ')}`); process.exit(1); }
+const paidWith = azure ? 'Azure credit' : 'Kie credit';
 
 const cityName = args.get('city') || 'London';
 const place: Place = cityName === 'London'
@@ -63,11 +68,13 @@ if (!place) { console.error(`Could not find "${cityName}".`); process.exit(1); }
 
 const director = cloudflareProvider({ accountId: env.CLOUDFLARE_ACCOUNT_ID, apiToken: env.CLOUDFLARE_API_TOKEN, directorModel: env.HEARTBEAT_DIRECTOR_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast', imageModel: '@cf/black-forest-labs/flux-1-schnell' });
 // A night picture that comes back too bright is dimmed and kept, so its credit is not wasted.
-const painter = kieImageProvider({ apiKey: env.KIE_API_KEY, model, dimTooBright: args.get('dim') !== 'off' });
+const dimTooBright = args.get('dim') !== 'off';
+const painter = azure ? azureFluxProvider({ endpoint: env.AZURE_IMAGE_ENDPOINT, apiKey: env.AZURE_IMAGE_KEY, model, dimTooBright }) : kieImageProvider({ apiKey: env.KIE_API_KEY, model, dimTooBright });
 const outDir = args.get('out') ? path.resolve(args.get('out')!) : path.join(root, 'outputs', 'live', new Date().toISOString().replace(/[:.]/g, '-'));
 await mkdir(outDir, { recursive: true });
 
 async function credits() {
+  if (azure) return null; // Azure has no balance API for a key; check Cost Management in the portal.
   try { const r = await fetch('https://api.kie.ai/api/v1/chat/credit', { headers: { Authorization: `Bearer ${env.KIE_API_KEY}` } }); const d = await r.json() as { data?: number }; return typeof d.data === 'number' ? d.data : null; } catch { return null; }
 }
 
@@ -120,7 +127,7 @@ async function attempt(n: number) {
     const kind = error instanceof ProviderFailure ? `${error.kind}${error.hints?.length ? ` (${error.hints.join(', ')})` : ''}` : (error as Error).message;
     frame.error = kind.includes('night-light') ? 'Too bright for night, so it was rejected. Your screen keeps the previous picture.' : kind.includes('mood-light') ? 'Too bright for this mood or twilight, so it was rejected. Your screen keeps the previous picture.' : kind.includes('words') ? 'The director did not use enough of the drawn words, so this one was skipped.' : `Could not make this one: ${kind}`;
     frame.paid = /light/.test(kind);
-    console.log(`   ${frame.error}${frame.paid ? ' (This one used a Kie credit.)' : ' (No Kie credit used.)'}`);
+    console.log(`   ${frame.error}${frame.paid ? ` (This one used ${paidWith}.)` : ` (No ${paidWith} used.)`}`);
   }
   await writeFile(path.join(outDir, 'log.json'), JSON.stringify(state, null, 2));
 }
@@ -244,7 +251,8 @@ const server = createServer(async (request, response) => {
 });
 server.listen(port, '127.0.0.1');
 console.log(`Heartbeat live test: ${place.name}, ${count} pictures, one every ${everyMinutes} min, painter ${model}, mood ${state.mood}.`);
-console.log(`Kie credits at start: ${state.startCredits ?? 'unknown'}`);
+if (!azure) console.log(`Kie credits at start: ${state.startCredits ?? 'unknown'}`);
+else console.log('Azure FLUX: about $0.04 of Azure credit per picture.');
 console.log(`Open http://127.0.0.1:${port}/ and leave it on screen. Press Ctrl+C to stop early.`);
 
 // Prepare ahead: each picture is made shortly before it is due, while the previous one is on
@@ -273,5 +281,6 @@ await new Promise(resolve => setTimeout(resolve, 2000));
 state.done = true; state.nextAt = 0; state.endCredits = await credits();
 await writeFile(path.join(outDir, 'log.json'), JSON.stringify(state, null, 2));
 const made = state.frames.filter(frame => frame.file).length;
-console.log(`\nDone: ${made} of ${count} pictures made. Kie credits now: ${state.endCredits ?? 'unknown'}${state.startCredits != null && state.endCredits != null ? ` (used ${(state.startCredits - state.endCredits).toFixed(1)})` : ''}.`);
+if (azure) console.log(`\nDone: ${made} of ${count} pictures made (about ${(made * 0.04).toFixed(2)} dollars of Azure credit).`);
+else console.log(`\nDone: ${made} of ${count} pictures made. Kie credits now:${state.endCredits ?? 'unknown'}${state.startCredits != null && state.endCredits != null ? ` (used ${(state.startCredits - state.endCredits).toFixed(1)})` : ''}.`);
 console.log(`Pictures and the director's notes are in ${path.relative(root, outDir)}/. The page stays open; press Ctrl+C to close it.`);

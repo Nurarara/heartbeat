@@ -60,7 +60,7 @@ function classify(status: number, code: number | undefined, text: string): Provi
   return failure('upstream', value >= 500 || value === 408, status, code, text);
 }
 
-async function bytesOf(response: Response, maximum: number): Promise<Uint8Array> {
+export async function bytesOf(response: Response, maximum: number): Promise<Uint8Array> {
   const reader = response.body?.getReader(); if (!reader) throw new ProviderFailure('invalid-output', false);
   const chunks: Uint8Array[] = []; let length = 0;
   try {
@@ -77,7 +77,7 @@ async function bytesOf(response: Response, maximum: number): Promise<Uint8Array>
 }
 
 /** Converts provider output to the JPEG the rest of Heartbeat stores, checks and serves. */
-async function asJpeg(bytes: Uint8Array): Promise<Uint8Array> {
+export async function asJpeg(bytes: Uint8Array): Promise<Uint8Array> {
   if (bytes[0] === 255 && bytes[1] === 216) return bytes;
   if (!isPng(bytes)) throw new ProviderFailure('invalid-output', false);
   try {

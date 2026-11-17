@@ -1,6 +1,7 @@
 import {localDevelopment, ProductError, rate, type ProductEnv} from './core.ts';
 import {requireAuth} from './auth.ts';
 import {kieConfigured} from '../ai/kie.ts';
+import {azureFluxConfigured} from '../ai/azure-flux.ts';
 const loopbackHosts=new Set(['localhost','127.0.0.1','[::1]']);
 function developmentOriginAllowed(origin:string|undefined){
  if(!origin)return true;
@@ -17,7 +18,7 @@ export function configurationErrors(env:ProductEnv){
   if(!env.DB||!env.BUCKET||!env.ARTWORK_WORKFLOW)errors.push('missing_hosted_bindings');
   if(env.HEARTBEAT_AI_ENABLED==='true'){
    if(!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID||'')||!env.CLOUDFLARE_API_TOKEN)errors.push('missing_ai_credentials');
-   if(!env.HEARTBEAT_DIRECTOR_MODEL?.startsWith('@cf/')||!(env.HEARTBEAT_IMAGE_PROVIDER==='kie'?kieConfigured(env):(!env.HEARTBEAT_IMAGE_PROVIDER||env.HEARTBEAT_IMAGE_PROVIDER==='cloudflare')&&env.HEARTBEAT_IMAGE_MODEL==='@cf/black-forest-labs/flux-1-schnell'))errors.push('unsupported_models');
+   if(!env.HEARTBEAT_DIRECTOR_MODEL?.startsWith('@cf/')||!(env.HEARTBEAT_IMAGE_PROVIDER==='kie'?kieConfigured(env):env.HEARTBEAT_IMAGE_PROVIDER==='azure'?azureFluxConfigured(env):(!env.HEARTBEAT_IMAGE_PROVIDER||env.HEARTBEAT_IMAGE_PROVIDER==='cloudflare')&&env.HEARTBEAT_IMAGE_MODEL==='@cf/black-forest-labs/flux-1-schnell'))errors.push('unsupported_models');
    if(!(Number(env.HEARTBEAT_DAILY_BUDGET_MICROS)>0)||!(Number(env.HEARTBEAT_DIRECTOR_ESTIMATE_MICROS)>0)||!(Number(env.HEARTBEAT_IMAGE_ESTIMATE_MICROS)>0))errors.push('unapproved_operating_budget');
   }
   if(!(env.HEARTBEAT_WEATHER_PROVIDER==='open-meteo-commercial'&&env.HEARTBEAT_WEATHER_API_KEY)&&env.HEARTBEAT_WEATHER_PROVIDER!=='visual-crossing-free')errors.push('commercial_weather_required');
