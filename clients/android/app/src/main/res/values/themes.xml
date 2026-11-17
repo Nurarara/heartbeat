@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Heartbeat" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorBackground">#070B10</item>
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:colorAccent">#FC684B</item>
+        <item name="android:statusBarColor">#070B10</item>
+        <item name="android:navigationBarColor">#070B10</item>
+        <item name="android:textColorPrimary">#F2F0E7</item>
+    </style>
+    <style name="Heartbeat.Frame">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+    <color name="ink">#070B10</color>
+</resources>

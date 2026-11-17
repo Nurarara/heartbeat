@@ -39,7 +39,9 @@
     "check:schema": "node --experimental-strip-types scripts/schema-contract.mjs",
     "beta:setup": "node scripts/beta-setup.mjs",
     "beta:serve": "node scripts/beta-serve.mjs",
-    "windows:build": "node scripts/build-windows.mjs"
+    "windows:build": "node scripts/build-windows.mjs",
+    "android:build": "node scripts/build-android.mjs build",
+    "android:publish": "node scripts/build-android.mjs publish"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

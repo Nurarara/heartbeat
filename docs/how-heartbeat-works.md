@@ -174,6 +174,13 @@ account stay on the website; the icon by the clock offers mood and pause shortcu
 day for a newer version and updates itself. Details: [clients/windows/README.md](../clients/windows/README.md);
 the contract every app follows: [api-for-apps.md](api-for-apps.md).
 
+## The Android app
+
+Downloaded from the studio (a 40 KB file; testers allow "install unknown apps" once). After signing in
+with the email code it can be the lock screen picture and home screen wallpaper (refreshed about every
+30 minutes, at most one new picture an hour, only while the screen is on), Android's screensaver while
+charging, or a full-screen "frame" that keeps the screen on. Details: [clients/android/README.md](../clients/android/README.md).
+
 ## Moving to paid hosting later
 
 When the test has proven the idea, the same code can run on Cloudflare's own servers (Workers Paid,
@@ -200,4 +207,5 @@ ready. The private-test switches (`HEARTBEAT_BETA`, `HEARTBEAT_SELF_HOSTED`) are
 | Running on your laptop | `scripts/beta-serve.mjs`, `scripts/beta-setup.mjs`, `lib/product/self-hosted.ts` |
 | API for installed apps | `lib/product/app-api.ts`, [api-for-apps.md](api-for-apps.md) |
 | Windows app | `clients/windows/Heartbeat.cs`, `scripts/build-windows.mjs` |
+| Android app | `clients/android/`, `scripts/build-android.mjs` |
 | Database changes | `drizzle/` (newest: `0015_beta.sql`) |

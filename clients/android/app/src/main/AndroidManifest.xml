@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Heartbeat"
+        android:theme="@style/Heartbeat">
+
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Full-screen picture frame that keeps the screen on. -->
+        <activity android:name=".FrameActivity" android:exported="false"
+            android:theme="@style/Heartbeat.Frame" android:configChanges="orientation|screenSize|screenLayout" />
+
+        <!-- Android's built-in screensaver (Settings → Display → Screen saver), shown while charging or docked. -->
+        <service android:name=".HeartbeatDream" android:exported="true" android:label="Heartbeat"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.service.dream" android:resource="@xml/dream" />
+        </service>
+
+        <!-- Background check (about every 30 minutes) that keeps the wallpaper and lock screen current. -->
+        <service android:name=".RefreshJob" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+</manifest>

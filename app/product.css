@@ -26,3 +26,4 @@
 .hp-auth input.hp-code-input{font-size:30px;letter-spacing:.45em;font-variant-numeric:tabular-nums;padding:10px 0}.hp-auth-switch button:disabled{color:var(--hp-muted);cursor:default}
 .hp-sidebar-admin{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--hp-text)!important;padding:8px 0}
 .hp-back-link{display:inline-block;font-size:12px;color:var(--hp-muted)!important;margin-bottom:28px}.hp-back-link:hover{color:var(--hp-text)!important}
+.hp-settings-card .hp-button.hp-small{margin:6px 10px 6px 0}.hp-button-secondary{background:transparent!important;border:1px solid var(--hp-line)!important;color:var(--hp-text)!important}
