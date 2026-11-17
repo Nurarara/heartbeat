@@ -1,5 +1,7 @@
 # Heartbeat: current system design
 
+> For a plain-English overview of the live private test (self-hosted beta, November 2026), start with [how-heartbeat-works.md](how-heartbeat-works.md).
+
 Updated 27 October 2026 against the local architecture implementation. The code supports the following design; hosted production and third-party acceptance remain unqualified. See [requirement coverage and remaining gates](architecture-changes.md) and [operator setup](launch-setup.md).
 
 ## Customer entry and recording mode
