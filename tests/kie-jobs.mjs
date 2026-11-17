@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {fixture} from './product-fixture.mjs';
 import {runArtworkJob} from '../lib/product/jobs.ts';
 import {configurationErrors} from '../lib/product/configuration.ts';
+import {cloudflareProvider} from '../lib/ai/cloudflare.ts';
 
 // The durable customer job uses Kie to paint when selected; the Cloudflare director still directs.
 const preferences={version:1,location:{name:'London',country:'United Kingdom',latitude:51.5,longitude:-.12,timezone:'Europe/London'},seed:42,unit:'c',reducedMotion:true};
@@ -9,7 +10,7 @@ const f=await fixture();const instances=new Set();let kieCalls=0,kieConfig;
 Object.assign(f.env,{HEARTBEAT_IMAGE_PROVIDER:'kie',KIE_API_KEY:'fake-kie-key',HEARTBEAT_KIE_MODEL:'z-image'});
 f.env.ARTWORK_WORKFLOW={create:async({id})=>{instances.add(id);},get:async()=>({status:async()=>({status:'running'})})};
 const deps={now:f.now,context:async()=>({temperature:9,weatherCode:61,observedAt:f.now(),fetchedAt:f.now(),isDay:true}),
- provider:()=>({direct:async()=>({action:'REIMAGINE',title:'Fox on the rooftops',reason:'Drizzle at dusk.',prompt:'A fox under an umbrella on rainy rooftops.',lighting:'daylight',themeIds:[]}),generate:async()=>{throw new Error('Cloudflare must not paint when Kie is selected');}}),
+ provider:config=>{cloudflareProvider(config);return {direct:async()=>({action:'REIMAGINE',title:'Fox on the rooftops',reason:'Drizzle at dusk.',prompt:'A fox under an umbrella on rainy rooftops.',lighting:'daylight',themeIds:[]}),generate:async()=>{throw new Error('Cloudflare must not paint when Kie is selected');}};},
  kie:config=>{kieConfig=config;return {generate:async()=>{kieCalls++;return {bytes:new Uint8Array([255,216,9,255,217]),mime:'image/jpeg',width:1280,height:720};}};}};
 try{
  const a=await f.register();
