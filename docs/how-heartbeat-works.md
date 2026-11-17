@@ -164,6 +164,16 @@ update `.dev.vars`, and restart with `npm run beta:serve nobuild`.
 | Pictures stop for everyone | The $5 daily cap is reached | Wait until midnight UTC, or raise the cap |
 | "This email isn't on the invite list" | Not invited, or a typo | Add the exact email on the dashboard |
 
+## The Windows app
+
+A tester downloads Heartbeat from their studio and opens it once. It installs into their own user
+folder, becomes the screensaver, starts with Windows, and signs in with the same email code. When the
+computer is idle, the screensaver shows the newest picture full-screen with the time and
+temperature, and asks the server for new pictures **only while it is showing**. Moods, city and
+account stay on the website; the icon by the clock offers mood and pause shortcuts. It checks once a
+day for a newer version and updates itself. Details: [clients/windows/README.md](../clients/windows/README.md);
+the contract every app follows: [api-for-apps.md](api-for-apps.md).
+
 ## Moving to paid hosting later
 
 When the test has proven the idea, the same code can run on Cloudflare's own servers (Workers Paid,
@@ -188,4 +198,6 @@ ready. The private-test switches (`HEARTBEAT_BETA`, `HEARTBEAT_SELF_HOSTED`) are
 | Weather | `lib/server/weather.ts` |
 | The display | `app/live-heartbeat.tsx`, `components/ambient-art.tsx`, `components/mood-picker.tsx` |
 | Running on your laptop | `scripts/beta-serve.mjs`, `scripts/beta-setup.mjs`, `lib/product/self-hosted.ts` |
+| API for installed apps | `lib/product/app-api.ts`, [api-for-apps.md](api-for-apps.md) |
+| Windows app | `clients/windows/Heartbeat.cs`, `scripts/build-windows.mjs` |
 | Database changes | `drizzle/` (newest: `0015_beta.sql`) |

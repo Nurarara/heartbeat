@@ -65,7 +65,13 @@ export async function sendCode(request: Request, env: ProductEnv, now: number, f
 
 /** Step 2: check the code, create the account on first use, start a session. */
 export async function verifyCode(request: Request, env: ProductEnv, now: number) {
-  const input = await readJSON(request, 1024), address = email(input.email);
+  const user = await codeLogin(request, env, await readJSON(request, 1024), now);
+  return session(request, env, user, now, 'code');
+}
+
+/** Checks an emailed code and returns the (possibly new) account. Shared by the website and the apps. */
+export async function codeLogin(request: Request, env: ProductEnv, input: Record<string, unknown>, now: number, via = ''): Promise<User> {
+  const address = email(input.email);
   await authRate(request, env, now, address);
   const code = typeof input.code === 'string' ? input.code.replace(/\s/g, '') : '';
   if (!/^\d{6}$/.test(code)) throw new ProductError('Enter the six-digit code from the email.');
@@ -92,8 +98,8 @@ export async function verifyCode(request: Request, env: ProductEnv, now: number)
   }
   if ((user.lifecycle ?? 'active') !== 'active') throw new ProductError('This account is being deleted.', 403);
   if (betaMode(env)) await grantBetaAllowance(env, user, now);
-  await logActivity(env, { userId: user.id, email: address, kind: created ? 'joined' : 'sign_in' }, now);
-  return session(request, env, user, now, 'code');
+  await logActivity(env, { userId: user.id, email: address, kind: created ? 'joined' : 'sign_in', detail: via }, now);
+  return user;
 }
 
 /** Free pictures for the test. Idempotent: one grant per account. */
@@ -124,14 +130,19 @@ export async function presence(request: Request, env: ProductEnv, user: User, no
   const input = await readJSON(request, 512);
   if (typeof input.session !== 'string' || !/^[a-f0-9-]{36}$/.test(input.session)) throw new ProductError('Invalid screen session.');
   await rate(env, `presence:${user.id}`, now, 30, 60000);
-  const mood = parseMood(input.mood), device = deviceOf(request.headers.get('user-agent')), database = db(env);
+  return json(await recordPresence(env, user, input.session, parseMood(input.mood), deviceOf(request.headers.get('user-agent')), now));
+}
+
+/** One "still showing" report from any screen: the website, a screensaver or a phone. */
+export async function recordPresence(env: ProductEnv, user: Pick<User, 'id' | 'email'>, sessionId: string, mood: string, device: string, now: number) {
+  const database = db(env), input = { session: sessionId };
   const prior = await database.prepare('SELECT user_id,mood FROM hb_view_sessions WHERE id=?').bind(input.session).first<{ user_id: string; mood: string }>();
   if (prior && prior.user_id !== user.id) throw new ProductError('Invalid screen session.');
   // Gaps over 150 seconds mean the screen was hidden or asleep; that time is not counted.
   await database.prepare('INSERT INTO hb_view_sessions(id,user_id,device,mood,started_at,last_seen,seconds) VALUES (?,?,?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET seconds=seconds+CASE WHEN ?-last_seen BETWEEN 0 AND 150000 THEN CAST(ROUND((?-last_seen)/1000.0) AS INTEGER) ELSE 0 END,last_seen=MAX(last_seen,?),mood=excluded.mood WHERE user_id=excluded.user_id').bind(input.session, user.id, device, mood, now, now, now, now, now).run();
   if (!prior) await logActivity(env, { userId: user.id, email: user.email, kind: 'screen_open', detail: device }, now);
   else if (prior.mood !== mood) await logActivity(env, { userId: user.id, email: user.email, kind: 'mood', detail: `${prior.mood} → ${mood}` }, now);
-  return json({ ok: true });
+  return { ok: true };
 }
 
 function requireOwner(env: ProductEnv, auth: Auth) {

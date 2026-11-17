@@ -155,7 +155,7 @@ The selected combined target is [docs/design/heartbeat-target.png](docs/design/h
 | Persistence | D1/SQLite for accounts, jobs and ledger; private R2 for JPEGs | `db/schema.ts`, `drizzle/`, `lib/product/` |
 | Jobs | Cloudflare Workflows, with explicit re-entry/recovery policy | `lib/product/jobs.ts`, `workflow.ts`, `build/sites-worker.ts` |
 | Billing/email | Stripe hosted billing and Resend delivery adapters | `lib/product/billing.ts`, `auth.ts` |
-| Windows | Native WinForms/.NET Framework companion and OS wallpaper APIs | `desktop/Heartbeat.cs`, `scripts/build-desktop.mjs` |
+| Windows | Screensaver, icon by the clock, email-code sign-in and self-updates (.NET Framework, built into Windows) | `clients/windows/Heartbeat.cs`, `scripts/build-windows.mjs` |
 
 Default configured AI models are recorded in `.env.example`; model access, costs and a genuinely cheaper director should be re-evaluated with measured quality. The legacy OpenAI world generator remains historical code, not the active customer generation path.
 
@@ -203,7 +203,7 @@ npm run test:prototype
 node --experimental-strip-types tests/night-quality.mjs
 pnpm exec tsc --noEmit
 npm run build
-npm run desktop:build
+npm run windows:build
 npm run setup:check
 ```
 

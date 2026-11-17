@@ -9,6 +9,7 @@ import {recoverBilling,cancelPendingCheckout,processBillingInbox} from './billin
 import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
 import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
+import {appRoute} from './app-api.ts';
 import {adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
@@ -18,6 +19,8 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
   try {
    if(path==='webhook'&&request.method==='POST'){const response=await webhook(request,env,now,fetcher);deps.waitUntil?.(processBillingInbox(env,{now,fetcher}));return response;}
    if(path.startsWith('ops/'))return await operatorRoute(request,env,now);
+   // Installed apps authenticate with a device key, not a browser cookie, so they skip the Origin check.
+   if(path.startsWith('app/'))return await appRoute(request,env,path,now,fetcher);
    if(request.method!=='GET')checkOrigin(request,env);
    if(path.startsWith('device/')&&!['device/approve','device/revoke'].includes(path)) {const device=await deviceRoute(request,env,path,now);if(device)return device;}
    if(path==='plans'&&request.method==='GET') {if(billingReady(env))await rate(env,`prices:${request.headers.get('cf-connecting-ip')||'local'}`,now,20,60000);return json({plans:Object.values(PLANS),billingReady:billingReady(env),prices:await priceCatalog(env,fetcher)});}

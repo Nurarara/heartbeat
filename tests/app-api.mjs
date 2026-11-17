@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import { fixture } from './product-fixture.mjs';
+
+const OWNER = 'owner@example.test';
+const f = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: OWNER, HEARTBEAT_EMAIL_API_KEY: 'fixture-mail', HEARTBEAT_EMAIL_FROM: 'Heartbeat <hello@example.test>', HEARTBEAT_DAILY_BUDGET_MICROS: '5000000', HEARTBEAT_DIRECTOR_ESTIMATE_MICROS: '2000', HEARTBEAT_IMAGE_ESTIMATE_MICROS: '40000' } });
+const workflows = [];
+f.env.ARTWORK_WORKFLOW = { create: async ({ id }) => { workflows.push(id); }, get: async () => ({ status: async () => ({ status: 'running' }) }) };
+const codeFor = address => f.emails.filter(m => m.to[0] === address).at(-1).subject.slice(0, 6);
+// Apps send no Origin header and no cookie: only the device key.
+const app = (path, body, token, extra = {}) => f.service.handle(new Request(`https://heartbeat.example/api/product/app/${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+const preferences = { version: 1, location: { name: 'London', country: 'United Kingdom', latitude: 51.5, longitude: -0.12, timezone: 'Europe/London' }, seed: 42, unit: 'c', reducedMotion: false };
+
+// Strangers get no code through the app either.
+assert.equal((await app('code/send', { email: 'stranger@example.test' })).status, 403);
+
+// Sign in from the Windows app: email → code → device key.
+assert.equal((await app('code/send', { email: OWNER })).status, 200);
+assert.equal((await app('code/verify', { email: OWNER, code: codeFor(OWNER), platform: 'beos', deviceName: 'X' })).status, 400);
+await app('code/send', { email: OWNER });
+const signed = await app('code/verify', { email: OWNER, code: codeFor(OWNER), platform: 'windows', deviceName: 'LAPTOP-1\u0007' });
+assert.equal(signed.status, 200, await signed.clone().text());
+const { token, deviceId, owner } = await signed.json();
+assert.match(token, /^[a-f0-9]{64}$/); assert.equal(owner, true);
+assert.equal(f.sqlite.prepare('SELECT name FROM hb_devices WHERE id=?').get(deviceId).name, 'Windows · LAPTOP-1');
+assert.equal(signed.headers.get('set-cookie'), null, 'Apps get a key, never a browser cookie');
+
+// A second device gets its own key.
+await app('code/send', { email: OWNER });
+const phone = await (await app('code/verify', { email: OWNER, code: codeFor(OWNER), platform: 'android', deviceName: 'Pixel' })).json();
+assert.notEqual(phone.token, token);
+
+// Without a key, or with a wrong one, nothing is shown.
+assert.equal((await app('state')).status, 401);
+assert.equal((await app('state', undefined, 'f'.repeat(64))).status, 401);
+
+// Before a city is chosen the app is told to visit the studio.
+const empty = await (await app('state', undefined, token)).json();
+assert.equal(empty.ready, false); assert.match(empty.reason, /city/);
+
+// Choose a city on the website (same account).
+await f.call('auth/code/send', { email: OWNER });
+const web = (await f.call('auth/code/verify', { email: OWNER, code: codeFor(OWNER) })).headers.get('set-cookie').split(';')[0];
+assert.equal((await f.call('preferences', { preferences }, { cookie: web })).status, 200);
+
+// Checking while NOT showing never starts a paid picture.
+const quiet = await (await app('state', undefined, token)).json();
+assert.equal(quiet.ready, true); assert.equal(quiet.picture, null); assert.equal(quiet.making, false);
+assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_jobs').get().n, 0);
+assert.equal(quiet.city, 'London'); assert.equal(quiet.mood, 'auto'); assert.equal(quiet.moods.length, 8);
+
+// Showing starts one picture; checking again in the same 10 minutes doesn't start another.
+const showing = await (await app('state?showing=1', undefined, token)).json();
+assert.equal(showing.making, true);
+await app('state?showing=1', undefined, token);
+assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_jobs').get().n, 1);
+
+// A finished picture is offered to the app and downloadable only with the owner's key.
+const owners = f.sqlite.prepare('SELECT id FROM hb_users WHERE email=?').get(OWNER).id, artId = crypto.randomUUID(), key = `heartbeat-ai/${owners}/${artId}.jpg`;
+const candidate = JSON.stringify({ direction: { artwork: { title: 'Quiet harbour', attemptId: artId }, phase: 'evening' } });
+f.sqlite.prepare("INSERT INTO ai_attempts(id,owner,request_id,claim,day,status,location_key,created_at,candidate,art_key) VALUES (?,?,?,'c','d','ready','l',?,?,?)").run(artId, owners, crypto.randomUUID(), f.now(), candidate, key);
+f.sqlite.prepare("INSERT INTO hb_assets(id,job_id,owner,world_id,surface_id,art_key,image_hash,mime,width,height,validation_version,state,created_at,updated_at) VALUES (?,?,?,?,?,?,'h','image/jpeg',10,10,1,'ready',?,?)").run(artId, artId, owners, `world-${owners}`, `surface-${owners}`, key, f.now(), f.now());
+await f.env.BUCKET.put(key, new Uint8Array([255, 216, 1, 2, 255, 217]));
+const ready = await (await app('state', undefined, token)).json();
+assert.equal(ready.picture.id, artId); assert.equal(ready.picture.title, 'Quiet harbour'); assert.equal(ready.picture.url, `/api/product/app/art/${artId}`);
+const art = await app(`art/${artId}`, undefined, token);
+assert.equal(art.status, 200); assert.equal(art.headers.get('content-type'), 'image/jpeg'); assert.equal((await art.arrayBuffer()).byteLength, 6);
+
+// Another tester's device can't fetch it.
+await f.call('admin/invite', { email: 'sam@example.test' }, { cookie: web });
+await app('code/send', { email: 'sam@example.test' });
+const sam = await (await app('code/verify', { email: 'sam@example.test', code: codeFor('sam@example.test'), platform: 'windows', deviceName: 'Sam' })).json();
+assert.equal((await app(`art/${artId}`, undefined, sam.token)).status, 404);
+
+// Mood from the app is saved to the account and seen by the website.
+assert.equal((await app('mood', { mood: 'romantic' }, token)).status, 200);
+assert.equal((await app('mood', { mood: 'angry' }, token)).status, 400);
+assert.equal((await (await f.call('preferences', undefined, { cookie: web })).json()).preferences.mood, 'romantic');
+
+// Screensaver time appears on the dashboard as its own device type.
+const session = crypto.randomUUID();
+assert.equal((await app('presence', { session, surface: 'screensaver' }, token)).status, 200);
+f.advance(60000); await app('presence', { session, surface: 'screensaver' }, token);
+const overview = await (await f.call('admin/overview?days=7&tz=0', undefined, { cookie: web })).json();
+assert.ok(overview.devices.some(d => d.device === 'windows screensaver' && d.seconds === 60));
+assert.equal(overview.testers.find(t => t.email === OWNER).mood, 'romantic');
+assert.ok(overview.activity.some(a => ['joined', 'sign_in'].includes(a.kind) && a.detail === 'Windows · LAPTOP-1'));
+
+// Signing out removes only that device's key.
+assert.equal((await app('signout', {}, token)).status, 200);
+assert.equal((await app('state', undefined, token)).status, 401);
+assert.equal((await app('state', undefined, phone.token)).status, 200);
+
+// Removing a tester from the invite list disconnects their apps at once.
+assert.equal((await app('state', undefined, sam.token)).status, 200);
+await f.call('admin/uninvite', { email: 'sam@example.test' }, { cookie: web });
+assert.equal((await app('state', undefined, sam.token)).status, 401);
+
+f.close();
+console.log('app api: ok');
