@@ -6,11 +6,11 @@ import {cloudflareProvider} from '../lib/ai/cloudflare.ts';
 
 // The durable customer job uses Kie to paint when selected; the Cloudflare director still directs.
 const preferences={version:1,location:{name:'London',country:'United Kingdom',latitude:51.5,longitude:-.12,timezone:'Europe/London'},seed:42,unit:'c',reducedMotion:true};
-const f=await fixture();const instances=new Set();let kieCalls=0,kieConfig;
+const f=await fixture();const instances=new Set(),directOptions=[];let kieCalls=0,kieConfig;
 Object.assign(f.env,{HEARTBEAT_IMAGE_PROVIDER:'kie',KIE_API_KEY:'fake-kie-key',HEARTBEAT_KIE_MODEL:'z-image'});
 f.env.ARTWORK_WORKFLOW={create:async({id})=>{instances.add(id);},get:async()=>({status:async()=>({status:'running'})})};
 const deps={now:f.now,context:async()=>({temperature:9,weatherCode:61,observedAt:f.now(),fetchedAt:f.now(),isDay:true}),
- provider:config=>{cloudflareProvider(config);return {direct:async()=>({action:'REIMAGINE',title:'Fox on the rooftops',reason:'Drizzle at dusk.',prompt:'A fox under an umbrella on rainy rooftops.',lighting:'daylight',themeIds:[]}),generate:async()=>{throw new Error('Cloudflare must not paint when Kie is selected');}};},
+ provider:config=>{cloudflareProvider(config);return {direct:async(_packet,options)=>(directOptions.push(options),{action:'REIMAGINE',title:'Fox on the rooftops',reason:'Drizzle at dusk.',prompt:'A fox under an umbrella on rainy rooftops.',lighting:'daylight',themeIds:[]}),generate:async()=>{throw new Error('Cloudflare must not paint when Kie is selected');}};},
  kie:config=>{kieConfig=config;return {generate:async()=>{kieCalls++;return {bytes:new Uint8Array([255,216,9,255,217]),mime:'image/jpeg',width:1280,height:720};}};}};
 try{
  const a=await f.register();
@@ -21,6 +21,7 @@ try{
  await runArtworkJob(f.env,job.id,deps);
  const done=await (await f.call(`generation?requestId=${requestId}`,undefined,{cookie:a.cookie})).json();
  assert.equal(done.status,'ready');assert.equal(kieCalls,1);
+ assert.equal(directOptions.at(-1).mustReimagine,true,'A due picture is always a new picture, never a hold');
  assert.deepEqual(kieConfig,{apiKey:'fake-kie-key',model:'z-image',dimTooBright:false});
  assert.equal(f.sqlite.prepare("SELECT model FROM hb_provider_operations WHERE kind='image'").get().model,'kie:z-image','The operating ledger records which painter was used');
  await runArtworkJob(f.env,job.id,deps);assert.equal(kieCalls,1,'A finished job never asks Kie again');

@@ -28,7 +28,8 @@ const originalStorage=globalThis.localStorage;
 try{
  await mount();await resolve(sessions,session('A'));assert.equal(profiles.length,1);
  await event('storage','heartbeat.account.owner');await resolve(profiles,profile('A'));assert.equal(shown(),null,'Superseded profile cannot render after another-tab account change');assert.deepEqual(globalThis.identityMounts,[]);await resolve(sessions,session('B'));await resolve(profiles,profile('B'));assert.equal(shown(),'B city 1');assert.equal(localStorage.getItem('heartbeat.account.owner'),'B');
- await event('focus');assert.equal(shown(),null,'Refocus clears the old owner before session revalidation');await resolve(sessions,session('B',2));await resolve(profiles,profile('B',2));assert.equal(shown(),'B city 2');assert.ok(globalThis.identityUnmounts.includes('B city 1'));
+ await event('focus');assert.equal(shown(),'B city 1','A quick return to the tab by the same account keeps the display');await resolve(sessions,session('B',2));await resolve(profiles,profile('B',2));assert.equal(shown(),'B city 2');assert.ok(globalThis.identityUnmounts.includes('B city 1'));
+ localStorage.setItem('heartbeat.account.owner','C');await event('focus');assert.equal(shown(),null,'Refocus clears the display when another account may be signed in');await resolve(sessions,session('B',2));await resolve(profiles,profile('B',2));assert.equal(shown(),'B city 2');
  // A periodic check with unchanged owner but newer preference version must
  // remount the inner display, whose server-version refs are initialized once.
  const nativeInterval=globalThis.setInterval,nativeClear=globalThis.clearInterval;await unmount();let poll;

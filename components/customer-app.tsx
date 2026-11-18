@@ -99,27 +99,37 @@ function PictureCard({picture:p,busy,onFavourite}:{picture:Picture;busy:boolean;
 export function CustomerDisplay(){
  const [profile,setProfile]=useState<{owner:string;preferences:AmbientPreferences;memory:StoryMemory|null;version:number;screen?:ScreenIdentity}|null>(null),[error,setError]=useState('');
  useEffect(()=>{
-  let active=true,owner='',version=-1,inFlight=false,revision=0,rerun=false;
+  let active=true,owner='',version=-1,inFlight=false,revision=0,rerun=false,showing=false;
   async function check(clear=false){
-   if(!active)return;if(clear){revision++;setProfile(null);}if(document.hidden)return;if(inFlight){rerun=rerun||clear;return;}const epoch=revision;inFlight=true;
+   if(!active)return;if(clear){revision++;showing=false;setProfile(null);}if(document.hidden)return;if(inFlight){rerun=rerun||clear;return;}const epoch=revision;inFlight=true;
    try{
     const a=await productAPI('auth/session');if(!active||epoch!==revision)return;
     if(!a.user){setProfile(null);location.replace(authDestination('login','/display'));return;}
     const changed=owner!==a.user.id;
     if(changed){setProfile(null);version=-1;}
-    if(!changed&&!clear&&a.profileVersion===version)return;
+    // Nothing changed and the display is up: keep it exactly as it is.
+    if(!changed&&!clear&&a.profileVersion===version&&showing)return;
     const p=await productAPI('preferences');if(!active||epoch!==revision)return;
     // Session and profile are separate requests. A cookie can change between
     // them even when browser storage is blocked, so bind both to one owner.
     if(p.surface?.owner_id!==a.user.id){setProfile(null);throw new Error('Your account changed while loading. Return to your studio or refocus to reconnect.');}
     if(!p.preferences){setProfile(null);location.replace(onboardingDestination());return;}
     if(changed){try{const pending=localStorage.getItem('heartbeat.account.owner')===a.user.id?localStorage.getItem('heartbeat.ai-request.v1'):null;storageKeys.forEach(k=>localStorage.removeItem(k));localStorage.setItem('heartbeat.account.owner',a.user.id);if(pending)localStorage.setItem('heartbeat.ai-request.v1',pending);localStorage.setItem('heartbeat.ambient.v1',JSON.stringify(p.preferences));}catch{/* Canonical profile and job discovery work without storage. */}}
-    owner=a.user.id;version=p.version??0;const screen=p.worldId&&p.surfaceId&&Number.isSafeInteger(p.surface.version)?{worldId:p.worldId,surfaceId:p.surfaceId,surfaceVersion:p.surface.version}:undefined;setProfile({owner,preferences:p.preferences,memory:p.memory||null,version,screen});setError('');
+    owner=a.user.id;version=p.version??0;const screen=p.worldId&&p.surfaceId&&Number.isSafeInteger(p.surface.version)?{worldId:p.worldId,surfaceId:p.surfaceId,surfaceVersion:p.surface.version}:undefined;setProfile({owner,preferences:p.preferences,memory:p.memory||null,version,screen});showing=true;setError('');
    }catch(e){if(active&&epoch===revision){if(clear)setProfile(null);setError((e as Error).message);}}
    finally{inFlight=false;if(rerun&&active){rerun=false;void check();}}
   }
   const storage=(e:StorageEvent)=>{if(e.key===null||e.key==='heartbeat.account.owner')void check(true);};
-  const foreground=()=>{if(!document.hidden)void check(true);};
+  // Coming back to the tab: the same account after a short absence keeps the display (and its picture) and only
+  // re-checks quietly. If the account may have changed (another account's marker, storage unavailable) or the tab was
+  // away a long time, the display is cleared first so another account's pictures are never shown.
+  let hiddenAt=0;
+  const foreground=()=>{
+   if(document.hidden){hiddenAt=Date.now();return;}
+   let marker:string|null=null,storage=true;try{marker=localStorage.getItem('heartbeat.account.owner');}catch{storage=false;}
+   const longAway=hiddenAt>0&&Date.now()-hiddenAt>600000;hiddenAt=0;
+   void check(longAway||!storage||!owner||marker!==owner);
+  };
   void check();const timer=setInterval(()=>{void check();},60000);
   window.addEventListener('storage',storage);window.addEventListener('focus',foreground);document.addEventListener('visibilitychange',foreground);
   return()=>{active=false;clearInterval(timer);window.removeEventListener('storage',storage);window.removeEventListener('focus',foreground);document.removeEventListener('visibilitychange',foreground);};

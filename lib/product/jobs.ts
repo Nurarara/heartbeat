@@ -147,7 +147,9 @@ export async function advanceArtworkJob(env:JobEnv,jobId:string,deps:Dependencie
    await reserveOperatingAttempt(env,job.id,at);
    await database.prepare("INSERT OR IGNORE INTO ai_attempts(id,owner,request_id,claim,day,status,location_key,created_at) VALUES (?,?,?,?,?,'directing',?,?)").bind(job.id,job.owner,job.request_id,claim,new Date(at).toISOString().slice(0,10),`${input.location.latitude},${input.location.longitude}:${input.location.timezone}`,job.created_at).run();
    await boundary(deps,'before_director_submit');await submitProviderOperation(env,operation.id,job.id,claim,job.stage_version,now());
-   await boundary(deps,'before_director');const c=JSON.parse(job.context!),direction=await provider().direct(c.packet,{signal:AbortSignal.timeout(180000),mustReimagine:input.force||!input.memory});await boundary(deps,'after_director');
+   // A request only reaches the director when the person's picture pace says one is due, so it must be a new
+   // picture: a 'keep the current one' answer would leave the screen unchanged for an hour.
+   await boundary(deps,'before_director');const c=JSON.parse(job.context!),direction=await provider().direct(c.packet,{signal:AbortSignal.timeout(180000),mustReimagine:true});await boundary(deps,'after_director');
    await transition(env,job,claim,direction.action==='HOLD'?'held':'directed',{direction:JSON.stringify(direction),...(direction.action==='HOLD'?{result:JSON.stringify({status:'held',reason:'The director kept this moment.',nextAt:at+3600000})}:{})},now());
    await settleProviderOperation(env,operation.id,'succeeded',now());if(direction.action==='HOLD'){await settleUsage(env,job.id,'release',now());await database.prepare("UPDATE ai_attempts SET status='held' WHERE id=?").bind(job.id).run();}
   }else if(job.status==='directed'){
