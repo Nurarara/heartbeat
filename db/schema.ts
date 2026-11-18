@@ -216,8 +216,11 @@ export const hbInvites=sqliteTable("hb_invites",{
   "email":text("email").notNull().primaryKey(),
   "note":text("note").notNull().default(""),
   "invited_by":text("invited_by").notNull(),
-  "invited_at":integer("invited_at").notNull()
-},t=>[]);
+  "invited_at":integer("invited_at").notNull(),
+  "rhythm_minutes":integer("rhythm_minutes"),
+  "daily_limit":integer("daily_limit")
+},t=>[check("hb_invites_check_0",sql.raw("rhythm_minutes IS NULL OR rhythm_minutes BETWEEN 2 AND 1440")),
+check("hb_invites_check_1",sql.raw("daily_limit IS NULL OR daily_limit BETWEEN 1 AND 500"))]);
 export const hbJobs=sqliteTable("hb_jobs",{
   "id":text("id").notNull().primaryKey(),
   "owner":text("owner").notNull(),

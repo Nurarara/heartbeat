@@ -61,7 +61,7 @@ f.sqlite.prepare("INSERT INTO ai_attempts(id,owner,request_id,claim,day,status,l
 f.sqlite.prepare("INSERT INTO hb_assets(id,job_id,owner,world_id,surface_id,art_key,image_hash,mime,width,height,validation_version,state,created_at,updated_at) VALUES (?,?,?,?,?,?,'h','image/jpeg',10,10,1,'ready',?,?)").run(artId, artId, owners, `world-${owners}`, `surface-${owners}`, key, f.now(), f.now());
 await f.env.BUCKET.put(key, new Uint8Array([255, 216, 1, 2, 255, 217]));
 const ready = await (await app('state', undefined, token)).json();
-assert.equal(ready.picture.id, artId); assert.equal(ready.rhythmMinutes, 3); assert.equal(ready.wallpaperMinutes, 3); assert.equal(ready.picture.title, 'Quiet harbour'); assert.equal(ready.picture.url, `/api/product/app/art/${artId}`);
+assert.equal(ready.picture.id, artId); assert.equal(ready.rhythmMinutes, 60); assert.equal(ready.wallpaperMinutes, 60); assert.equal(ready.picture.title, 'Quiet harbour'); assert.equal(ready.picture.url, `/api/product/app/art/${artId}`);
 const art = await app(`art/${artId}`, undefined, token);
 assert.equal(art.status, 200); assert.equal(art.headers.get('content-type'), 'image/jpeg'); assert.equal((await art.arrayBuffer()).byteLength, 6);
 

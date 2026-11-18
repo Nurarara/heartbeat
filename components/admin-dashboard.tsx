@@ -4,7 +4,7 @@ import { Activity, Clock3, Image as ImageIcon, MonitorSmartphone, RefreshCw, Tra
 import { Brand, productAPI } from './product-shell';
 import { MOODS, parseMood } from '@/lib/moods';
 
-type Tester = { email: string; note: string; invited_at: number; user_id: string | null; joined_at: number | null; last_sign_in: number | null; last_seen: number | null; sessions: number; seconds: number; seconds_today: number; pictures: number; pictures_today: number; mood: string | null; device: string | null };
+type Tester = { email: string; note: string; invited_at: number; rhythm_minutes: number | null; daily_limit: number | null; user_id: string | null; joined_at: number | null; last_sign_in: number | null; last_seen: number | null; sessions: number; seconds: number; seconds_today: number; pictures: number; pictures_today: number; mood: string | null; device: string | null };
 type Session = { id: string; email: string; device: string; mood: string; started_at: number; last_seen: number; seconds: number };
 type Overview = {
   generatedAt: number; days: number; seats: number; beta: boolean; cadenceMinutes: number; dailyPicturesPerTester: number;
@@ -29,7 +29,7 @@ const shortDay = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateStrin
 const money = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
 const moodLabel = (mood: string | null) => mood ? MOODS[parseMood(mood)].label : '—';
 const JOB: Record<string, string> = { ready: 'Ready', done: 'Ready', held: 'Kept current', failed: 'Failed', outcome_unknown: 'Failed', canceled: 'Cancelled' };
-const KIND: Record<string, string> = { joined: 'joined the test', sign_in: 'signed in', code_sent: 'asked for a code', not_invited: 'tried to sign in (not invited)', screen_open: 'opened a screen', mood: 'changed mood', invited: 'was invited', removed: 'was removed' };
+const KIND: Record<string, string> = { joined: 'joined the test', sign_in: 'signed in', code_sent: 'asked for a code', not_invited: 'tried to sign in (not invited)', screen_open: 'opened a screen', mood: 'changed mood', invited: 'was invited', removed: 'was removed', pace: 'picture pace set' };
 
 type Bar = { label: string; value: number; tip: string };
 const STEPS = { time: [30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800], count: [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000] };
@@ -70,6 +70,22 @@ function Breakdown({ title, rows, total }: { title: string; rows: { key: string;
       <span className="ad-num">{duration(row.value)} <small>{total ? Math.round((row.value / total) * 100) : 0}%</small></span>
     </li>)}</ul> : <p className="ad-empty">No viewing yet.</p>}
   </section>;
+}
+
+/** Per-tester picture rhythm and daily limit. Empty boxes mean the defaults. */
+function PaceEditor({ tester, defaults, onSaved }: { tester: Tester; defaults: { minutes: number; daily: number }; onSaved: (message: string) => void }) {
+  const [minutes, setMinutes] = useState(tester.rhythm_minutes ? String(tester.rhythm_minutes) : ''), [daily, setDaily] = useState(tester.daily_limit ? String(tester.daily_limit) : ''), [busy, setBusy] = useState(false);
+  const changed = minutes !== (tester.rhythm_minutes ? String(tester.rhythm_minutes) : '') || daily !== (tester.daily_limit ? String(tester.daily_limit) : '');
+  async function save(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true);
+    try { await productAPI('admin/pace', { email: tester.email, rhythmMinutes: minutes === '' ? null : Number(minutes), dailyLimit: daily === '' ? null : Number(daily) }); onSaved(`${tester.email}: ${minutes ? `a new picture every ${minutes} min` : `default (${defaults.minutes} min)`}, ${daily ? `up to ${daily} a day` : `default limit (${defaults.daily})`}.`); }
+    catch (e) { onSaved((e as Error).message); } finally { setBusy(false); }
+  }
+  return <form className="ad-pace" onSubmit={save}>
+    <label>every<input inputMode="numeric" pattern="[0-9]*" placeholder={String(defaults.minutes)} value={minutes} onChange={e => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-label={`Minutes between pictures for ${tester.email}`} />min</label>
+    <label>max<input inputMode="numeric" pattern="[0-9]*" placeholder={String(defaults.daily)} value={daily} onChange={e => setDaily(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-label={`Pictures per day for ${tester.email}`} />/day</label>
+    {changed && <button className="ad-button ad-primary ad-tiny" disabled={busy}>Save</button>}
+  </form>;
 }
 
 function Stat({ icon, label, value, note, tone }: { icon: React.ReactNode; label: string; value: string; note?: string; tone?: 'live' | 'warn' }) {
@@ -114,7 +130,7 @@ export function AdminDashboard() {
       <Stat icon={<Users size={14} />} label="Testers joined" value={`${joined.length} / ${people.length}`} note={`${data.seats - people.length} of ${data.seats} places left`} />
       <Stat icon={<Clock3 size={14} />} label="Watch time today" value={duration(today?.seconds || 0)} note={`${today?.viewers || 0} people · ${today?.sessions || 0} sessions`} />
       <Stat icon={<Clock3 size={14} />} label={`Watch time, ${data.days} days`} value={duration(range)} note={`Average session ${duration(sessions ? range / sessions : 0)}`} />
-      <Stat icon={<ImageIcon size={14} />} label="Pictures today" value={String(today?.pictures || 0)} note={`New picture every ${data.cadenceMinutes} min · up to ${data.dailyPicturesPerTester} each a day`} />
+      <Stat icon={<ImageIcon size={14} />} label="Pictures today" value={String(today?.pictures || 0)} note={`Default: every ${data.cadenceMinutes} min · up to ${data.dailyPicturesPerTester} each a day`} />
       <Stat icon={<Wallet size={14} />} label="Spent today (UTC)" value={money(used)} note={cap ? `of ${money(cap)} daily cap · ${data.budget.painter}` : 'No daily cap set'} tone={share >= .8 ? 'warn' : undefined} />
     </section>
     {cap > 0 && <div className="ad-meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={used} aria-label="Daily spend"><span style={{ width: `${Math.min(100, share * 100)}%` }} data-warn={share >= .8} /><small>{share >= 1 ? 'Daily cap reached: screens keep their last picture until midnight UTC.' : `${Math.round(share * 100)}% of today’s cap used`}</small></div>}
@@ -133,11 +149,11 @@ export function AdminDashboard() {
       <form className="ad-invite" onSubmit={add}><UserPlus size={16} aria-hidden="true" /><input type="email" required placeholder="friend@example.com" value={invite} onChange={e => setInvite(e.target.value)} aria-label="Email to invite" /><input placeholder="Note (optional), e.g. Sam, iPad" value={note} maxLength={80} onChange={e => setNote(e.target.value)} aria-label="Note" /><button className="ad-button ad-primary" disabled={busy}>Invite</button></form>
       {message && <p className="ad-message" role="status">{message}</p>}
       <div className="ad-scroll"><table className="ad-table">
-        <thead><tr><th>Person</th><th>Status</th><th>Joined</th><th>Last seen</th><th className="ad-num">Sessions</th><th className="ad-num">Watch total</th><th className="ad-num">Today</th><th className="ad-num">Avg session</th><th className="ad-num">Pictures</th><th>Mood</th><th>Device</th><th /></tr></thead>
+        <thead><tr><th>Person</th><th>Status</th><th>Joined</th><th>Last seen</th><th className="ad-num">Sessions</th><th className="ad-num">Watch total</th><th className="ad-num">Today</th><th className="ad-num">Avg session</th><th className="ad-num">Pictures</th><th>Mood</th><th>Device</th><th>Picture pace</th><th /></tr></thead>
         <tbody>{data.testers.map(t => {
           const live = !!t.last_seen && now - t.last_seen < 120000, status = live ? 'Watching' : t.user_id ? 'Joined' : 'Invited';
           return <tr key={t.email}><td><strong>{t.email}</strong>{t.note && <small>{t.note}</small>}</td><td><span className="ad-status" data-status={status.toLowerCase()}>{status}</span></td>
-            <td>{t.joined_at ? clock(t.joined_at) : '—'}</td><td title={t.last_seen ? clock(t.last_seen) : ''}>{ago(t.last_seen, now)}</td><td className="ad-num">{t.sessions}</td><td className="ad-num">{duration(t.seconds)}</td><td className="ad-num">{duration(t.seconds_today)}</td><td className="ad-num">{duration(t.sessions ? t.seconds / t.sessions : 0)}</td><td className="ad-num">{t.pictures}{t.pictures_today ? <small> +{t.pictures_today} today</small> : null}</td><td>{moodLabel(t.mood)}</td><td>{t.device || '—'}</td>
+            <td>{t.joined_at ? clock(t.joined_at) : '—'}</td><td title={t.last_seen ? clock(t.last_seen) : ''}>{ago(t.last_seen, now)}</td><td className="ad-num">{t.sessions}</td><td className="ad-num">{duration(t.seconds)}</td><td className="ad-num">{duration(t.seconds_today)}</td><td className="ad-num">{duration(t.sessions ? t.seconds / t.sessions : 0)}</td><td className="ad-num">{t.pictures}{t.pictures_today ? <small> +{t.pictures_today} today</small> : null}</td><td>{moodLabel(t.mood)}</td><td>{t.device || '—'}</td><td><PaceEditor key={`${t.email}:${t.rhythm_minutes}:${t.daily_limit}`} tester={t} defaults={{ minutes: data.cadenceMinutes, daily: data.dailyPicturesPerTester }} onSaved={text => { setMessage(text); void load(); }} /></td>
             <td>{t.note !== 'You (owner)' && <button className="ad-icon" aria-label={`Remove ${t.email}`} title="Remove from test" disabled={busy} onClick={() => void remove(t.email)}><Trash2 size={14} /></button>}</td></tr>;
         })}</tbody></table></div>
     </section>

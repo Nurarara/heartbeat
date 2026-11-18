@@ -17,6 +17,7 @@ const additions=[
  ['hb_usage_adjustments',null,'0013_usage_adjustments.sql'],
  ['hb_google_identities',null,'0014_google_auth.sql'],
  ['hb_invites',null,'0015_beta.sql'],
+ ['hb_invites','rhythm_minutes','0016_tester_rhythm.sql'],
 ];
 let backedUp=false;
 function backupLocalDatabase(){

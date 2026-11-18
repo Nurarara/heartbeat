@@ -1,7 +1,7 @@
 import { authenticate, type Auth } from './auth.ts';
 import { db, localDevelopment, PLANS, type PlanId, type ProductEnv } from './core.ts';
 import {usageForAccount} from './usage.ts';
-import {betaBlock,betaCadence,betaMode} from './beta.ts';
+import {betaBlock,betaMode,testerPace} from './beta.ts';
 export type AccountAccess = { userId:string;expires:number;eligible:boolean;reason:string;plan:PlanId;allowance:number;baseAllowance?:number;allowanceAdjustment?:number;periodStart:number;periodEnd:number;used:number;cadence:number };
 export async function accessFor(auth:Pick<Auth,'user'|'expires'>,env:ProductEnv,now:number,local=false):Promise<AccountAccess> {
   const billing=await db(env).prepare('SELECT * FROM hb_billing WHERE user_id=?').bind(auth.user.id).first<{plan:string;status:string;period_start:number;period_end:number;review_required:number}>();
@@ -13,6 +13,6 @@ export async function accessFor(auth:Pick<Auth,'user'|'expires'>,env:ProductEnv,
   if(!betaMode(env))return access;
   // Private beta: free pictures every few minutes, within a per-tester daily limit.
   const block=await betaBlock(env,auth.user,now);
-  return {...access,cadence:betaCadence(env),eligible:access.eligible&&!block,reason:block||access.reason};
+  return {...access,cadence:(await testerPace(env,auth.user.email)).cadence,eligible:access.eligible&&!block,reason:block||access.reason};
 }
 export async function accountAccess(request:Request,env:ProductEnv,now:number) { const auth=await authenticate(request,env,now);return auth?accessFor(auth,env,now,localDevelopment(request,env)):null; }

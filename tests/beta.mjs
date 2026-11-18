@@ -42,7 +42,23 @@ assert.equal(full.status, 409); assert.match((await full.json()).error, /full/);
 const sam = await signIn('sam@example.test');
 const samSession = await (await f.call('auth/session', undefined, { cookie: sam })).json();
 assert.equal(samSession.user.email, 'sam@example.test'); assert.equal(samSession.owner, false);
-assert.equal(samSession.access.eligible, true); assert.equal(samSession.access.cadence, 180000);
+assert.equal(samSession.access.eligible, true); assert.equal(samSession.access.cadence, 3600000, 'The basic rhythm is one picture an hour');
+// The owner can give one tester a faster rhythm and their own daily limit.
+assert.equal((await f.call('admin/pace', { email: 'sam@example.test', rhythmMinutes: 5, dailyLimit: 1 }, { cookie: sam })).status, 404, 'Only the owner');
+assert.equal((await f.call('admin/pace', { email: 'sam@example.test', rhythmMinutes: 1 }, { cookie: owner })).status, 400);
+assert.equal((await f.call('admin/pace', { email: 'nobody@example.test', rhythmMinutes: 5 }, { cookie: owner })).status, 404);
+assert.equal((await f.call('admin/pace', { email: 'sam@example.test', rhythmMinutes: 5, dailyLimit: 4 }, { cookie: owner })).status, 200);
+assert.equal((await (await f.call('auth/session', undefined, { cookie: sam })).json()).access.cadence, 300000);
+const paced = await (await f.call('admin/overview?days=7&tz=0', undefined, { cookie: owner })).json();
+assert.equal(paced.testers.find(t => t.email === 'sam@example.test').rhythm_minutes, 5);
+assert.equal(paced.cadenceMinutes, 60); assert.equal(paced.testers.filter(t => t.email === OWNER).length, 1);
+// The owner can pace themselves too, without appearing twice.
+assert.equal((await f.call('admin/pace', { email: OWNER, rhythmMinutes: 10 }, { cookie: owner })).status, 200);
+const ownerPaced = await (await f.call('admin/overview?days=7&tz=0', undefined, { cookie: owner })).json();
+assert.equal(ownerPaced.testers.filter(t => t.email === OWNER).length, 1); assert.equal(ownerPaced.testers.find(t => t.email === OWNER).rhythm_minutes, 10);
+assert.equal((await f.call('admin/invite', { email: 'extra@example.test' }, { cookie: owner })).status, 409, 'The owner row never takes a seat');
+// Back to the default for the rest of this test.
+assert.equal((await f.call('admin/pace', { email: 'sam@example.test', rhythmMinutes: null, dailyLimit: null }, { cookie: owner })).status, 200);
 assert.ok(samSession.access.allowance >= 5000);
 assert.match(f.emails.at(-1).text, /\d{6}/); assert.equal(f.emails.at(-1).from, 'Heartbeat <hello@example.test>');
 

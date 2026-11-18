@@ -5,7 +5,7 @@ import type { User } from './auth.ts';
 import { db, hash, json, ProductError, randomToken, rate, readJSON } from './core.ts';
 import { profileFor, acknowledgeDisplay, updatePreferences } from './profiles.ts';
 import { generation, type JobEnv } from './jobs.ts';
-import { betaCadence, betaMode, codeLogin, invited, isOwner, recordPresence, sendCode } from './beta.ts';
+import { betaMode, codeLogin, testerPace, invited, isOwner, recordPresence, sendCode } from './beta.ts';
 import { MOOD_IDS, MOODS, parseMood } from '../moods.ts';
 import { withMood } from '../ambient.ts';
 import { createWeatherAdapter } from '../server/weather.ts';
@@ -58,7 +58,7 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
   // What should this screen show now? With showing=1 the screen is visible, so a due picture is started.
   if (route === 'state' && request.method === 'GET') {
     await rate(env, `app-state:${device.id}`, now, 20, 60000);
-    const url = new URL(request.url), showing = url.searchParams.get('showing') === '1', rhythm = betaMode(env) ? betaCadence(env) : 600000;
+    const url = new URL(request.url), showing = url.searchParams.get('showing') === '1', rhythm = betaMode(env) ? (await testerPace(env, user.email)).cadence : 3600000;
     const profile = await profileFor(env, user.id, {}, now);
     if (!profile.preferences) return json({ ready: false, reason: 'Choose your city in your studio first.', studio: '/app', checkAfterSeconds: CHECK_SECONDS });
     const preferences = profile.preferences;
@@ -83,7 +83,7 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
     return json({
       ready: true, checkAfterSeconds: CHECK_SECONDS, making, notice,
       // How often a visible screen gets a new picture, and how often a wallpaper should ask (minutes).
-      rhythmMinutes: Math.round(rhythm / 60000), wallpaperMinutes: betaMode(env) ? Math.round(rhythm / 60000) : 30,
+      rhythmMinutes: Math.round(rhythm / 60000), wallpaperMinutes: Math.round(rhythm / 60000),
       picture: latest ? { id: latest.id, title: candidate?.direction?.artwork?.title || '', url: `/api/product/app/art/${latest.id}`, createdAt: latest.created_at } : null,
       city: preferences.location.name, timezone: preferences.location.timezone, temperature, unit: preferences.unit,
       mood: parseMood(preferences.mood), moods: MOOD_IDS.map(id => ({ id, label: MOODS[id].label, colour: MOODS[id].colour })),

@@ -11,10 +11,16 @@ export const betaMode = (env: ProductEnv) => env.HEARTBEAT_BETA === 'true';
 export const ownerEmail = (env: ProductEnv) => (env.HEARTBEAT_OWNER_EMAIL || '').trim().toLowerCase();
 export const isOwner = (env: ProductEnv, address: string) => !!ownerEmail(env) && address === ownerEmail(env);
 export const betaSeats = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_SEATS, 25, 1, 500);
-/** Minutes between new pictures for beta testers. */
-export const betaCadence = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_CADENCE_MINUTES, 3, 2, 240) * 60000;
-/** New pictures one tester can start per UTC day, so one screen left on overnight cannot use everyone's budget. */
-export const betaDailyPictures = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_USER_DAILY, 30, 1, 1000);
+/** Default minutes between new pictures (the basic rhythm: one an hour). The owner can set each tester's own. */
+export const betaCadence = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_CADENCE_MINUTES, 60, 2, 1440) * 60000;
+/** Default new pictures one tester can start per UTC day, so one screen left on overnight cannot use everyone's budget. */
+export const betaDailyPictures = (env: ProductEnv) => clamp(env.HEARTBEAT_BETA_USER_DAILY, 30, 1, 500);
+export type TesterPace = { cadence: number; daily: number; custom: boolean };
+/** This person's picture rhythm and daily limit: their own if the owner set one, otherwise the defaults. */
+export async function testerPace(env: ProductEnv, address: string): Promise<TesterPace> {
+  const row = betaMode(env) ? await db(env).prepare('SELECT rhythm_minutes,daily_limit FROM hb_invites WHERE email=?').bind(address).first<{ rhythm_minutes: number | null; daily_limit: number | null }>() : null;
+  return { cadence: row?.rhythm_minutes ? row.rhythm_minutes * 60000 : betaCadence(env), daily: row?.daily_limit || betaDailyPictures(env), custom: !!(row?.rhythm_minutes || row?.daily_limit) };
+}
 function clamp(value: string | undefined, fallback: number, low: number, high: number) { const n = Number(value ?? fallback); return Number.isSafeInteger(n) && n >= low && n <= high ? n : fallback; }
 const dayStart = (now: number) => Math.floor(now / 86400000) * 86400000;
 
@@ -113,7 +119,7 @@ export async function betaBlock(env: ProductEnv, user: Pick<User, 'id' | 'email'
   if (!betaMode(env)) return null;
   if (!await invited(env, user.email)) return 'This account is no longer on the test invite list.';
   const today = await db(env).prepare('SELECT COUNT(*) AS n FROM hb_jobs WHERE owner=? AND created_at>=?').bind(user.id, dayStart(now)).first<{ n: number }>();
-  if ((today?.n || 0) >= betaDailyPictures(env)) return 'That’s all the fresh pictures for today. Your screen keeps showing them, and new ones start again tomorrow.';
+  if ((today?.n || 0) >= (await testerPace(env, user.email)).daily) return 'That’s all the fresh pictures for today. Your screen keeps showing them, and new ones start again tomorrow.';
   return null;
 }
 
@@ -163,6 +169,21 @@ export async function adminRoute(request: Request, env: ProductEnv, auth: Auth, 
     if (!exists) await logActivity(env, { email: address, kind: 'invited', detail: note }, now);
     return json({ invited: address });
   }
+  if (path === 'admin/pace' && request.method === 'POST') {
+    // Per-tester picture rhythm (minutes) and daily limit; empty means the default.
+    const input = await readJSON(request, 1024), address = email(input.email);
+    const minutes = input.rhythmMinutes === null || input.rhythmMinutes === '' || input.rhythmMinutes === undefined ? null : Number(input.rhythmMinutes);
+    const daily = input.dailyLimit === null || input.dailyLimit === '' || input.dailyLimit === undefined ? null : Number(input.dailyLimit);
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 2 || minutes > 1440)) throw new ProductError('Choose between 2 and 1440 minutes.');
+    if (daily !== null && (!Number.isInteger(daily) || daily < 1 || daily > 500)) throw new ProductError('Choose between 1 and 500 pictures a day.');
+    if (!isOwner(env, address) && !await database.prepare('SELECT email FROM hb_invites WHERE email=?').bind(address).first()) throw new ProductError('Invite this person first.', 404);
+    await database.prepare("INSERT INTO hb_invites(email,note,invited_by,invited_at,rhythm_minutes,daily_limit) VALUES (?,'',?,?,?,?) ON CONFLICT(email) DO UPDATE SET rhythm_minutes=excluded.rhythm_minutes,daily_limit=excluded.daily_limit").bind(address, auth.user.email, now, minutes, daily).run();
+    // The new rhythm applies from the next picture: let a waiting screen ask again now.
+    const user = await database.prepare('SELECT id FROM hb_users WHERE email=?').bind(address).first<{ id: string }>();
+    if (user) await database.prepare('UPDATE ai_sessions SET next_at=MIN(next_at,?) WHERE id=?').bind(now + (minutes ?? betaCadence(env) / 60000) * 60000, user.id).run();
+    await logActivity(env, { email: address, kind: 'pace', detail: `${minutes ? `every ${minutes} min` : 'default rhythm'} · ${daily ? `${daily}/day` : 'default limit'}` }, now);
+    return json({ email: address, rhythmMinutes: minutes, dailyLimit: daily });
+  }
   if (path === 'admin/uninvite' && request.method === 'POST') {
     const address = email((await readJSON(request, 1024)).email);
     if (isOwner(env, address)) throw new ProductError('You can’t remove yourself.');
@@ -187,8 +208,8 @@ export async function overview(env: ProductEnv, now: number, params: URLSearchPa
   const days = Math.max(7, Math.min(60, Number(params.get('days')) || 14));
   const localToday = Math.floor((now + shift) / 86400000) * 86400000 - shift, since = localToday - (days - 1) * 86400000, live = now - 120000;
   const all = async (sql: string, ...values: unknown[]) => (await database.prepare(sql).bind(...values).all<Row>()).results;
-  const testers = await all(`WITH people AS (SELECT email,note,invited_at FROM hb_invites UNION SELECT ?,'You (owner)',0 WHERE ?<>'')
-    SELECT p.email,p.note,p.invited_at,u.id AS user_id,u.created_at AS joined_at,
+  const testers = await all(`WITH people AS (SELECT email,note,invited_at,rhythm_minutes,daily_limit FROM hb_invites WHERE email<>? UNION ALL SELECT ?,'You (owner)',0,(SELECT rhythm_minutes FROM hb_invites WHERE email=?),(SELECT daily_limit FROM hb_invites WHERE email=?) WHERE ?<>'')
+    SELECT p.email,p.note,p.invited_at,p.rhythm_minutes,p.daily_limit,u.id AS user_id,u.created_at AS joined_at,
      (SELECT MAX(authenticated_at) FROM hb_sessions s WHERE s.user_id=u.id) AS last_sign_in,
      (SELECT MAX(last_seen) FROM hb_view_sessions v WHERE v.user_id=u.id) AS last_seen,
      (SELECT COUNT(*) FROM hb_view_sessions v WHERE v.user_id=u.id AND v.seconds>0) AS sessions,
@@ -198,7 +219,7 @@ export async function overview(env: ProductEnv, now: number, params: URLSearchPa
      (SELECT COUNT(*) FROM ai_attempts a WHERE a.owner=u.id AND a.art_key IS NOT NULL AND a.created_at>=?) AS pictures_today,
      (SELECT mood FROM hb_view_sessions v WHERE v.user_id=u.id ORDER BY last_seen DESC LIMIT 1) AS mood,
      (SELECT device FROM hb_view_sessions v WHERE v.user_id=u.id ORDER BY last_seen DESC LIMIT 1) AS device
-    FROM people p LEFT JOIN hb_users u ON u.email=p.email ORDER BY last_seen IS NULL, last_seen DESC, p.invited_at DESC`, owner, owner, localToday, localToday);
+    FROM people p LEFT JOIN hb_users u ON u.email=p.email ORDER BY last_seen IS NULL, last_seen DESC, p.invited_at DESC`, owner, owner, owner, owner, owner, localToday, localToday);
   const daily = await all(`SELECT CAST((started_at+?)/86400000 AS INTEGER) AS bucket, SUM(seconds) AS seconds, COUNT(DISTINCT user_id) AS viewers, SUM(CASE WHEN seconds>0 THEN 1 ELSE 0 END) AS sessions FROM hb_view_sessions WHERE started_at>=? GROUP BY bucket`, shift, since);
   const pictures = await all(`SELECT CAST((created_at+?)/86400000 AS INTEGER) AS bucket, COUNT(*) AS pictures FROM ai_attempts WHERE art_key IS NOT NULL AND created_at>=? GROUP BY bucket`, shift, since);
   const hourly = await all(`SELECT CAST(((started_at+?)%86400000)/3600000 AS INTEGER) AS hour, SUM(seconds) AS seconds FROM hb_view_sessions WHERE started_at>=? GROUP BY hour`, shift, since);
