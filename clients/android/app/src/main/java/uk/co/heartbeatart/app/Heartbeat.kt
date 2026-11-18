@@ -23,7 +23,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 const val SERVER = "https://app.heartbeatart.co.uk"
-const val APP_VERSION_CODE = 2
+const val APP_VERSION_CODE = 3
 
 class ApiError(val status: Int, message: String) : Exception(message)
 
@@ -44,6 +44,7 @@ class Store(context: Context) {
     var homeScreen: Boolean get() = prefs.getBoolean("home", false); set(v) = prefs.edit().putBoolean("home", v).apply()
     var wallpaperId: String get() = prefs.getString("wallpaperId", "") ?: ""; set(v) = prefs.edit().putString("wallpaperId", v).apply()
     var lastWallpaperRequest: Long get() = prefs.getLong("lastWallpaperRequest", 0); set(v) = prefs.edit().putLong("lastWallpaperRequest", v).apply()
+    var setupDone: Boolean get() = prefs.getBoolean("setupDone", false); set(v) = prefs.edit().putBoolean("setupDone", v).apply()
     var pausedUntil: Long get() = prefs.getLong("pausedUntil", 0); set(v) = prefs.edit().putLong("pausedUntil", v).apply()
     val paused get() = pausedUntil > System.currentTimeMillis()
     val signedIn get() = token.length == 64

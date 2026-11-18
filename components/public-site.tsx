@@ -27,9 +27,9 @@ function detectPlatform(): Platform {
   return 'other';
 }
 const DOWNLOADS: Record<Exclude<Platform, 'other'>, { label: string; href: string; note: string }> = {
-  windows: { label: 'Download for Windows', href: '/downloads/Heartbeat.exe', note: 'Windows 10 and 11 · 64 KB' },
+  windows: { label: 'Download for Windows', href: '/downloads/Heartbeat.exe', note: 'Windows 10 and 11 · under 100 KB' },
   mac: { label: 'Download for Mac', href: '/downloads/Heartbeat-mac.zip', note: 'macOS 13 or later · Apple silicon and Intel' },
-  android: { label: 'Download for Android', href: '/downloads/Heartbeat.apk', note: 'Android 8 or later · 42 KB' },
+  android: { label: 'Download for Android', href: '/downloads/Heartbeat.apk', note: 'Android 8 or later · under 100 KB' },
   iphone: { label: 'Set up on iPhone', href: '/download#iphone', note: 'Home Screen app and lock screen picture' },
 };
 

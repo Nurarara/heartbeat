@@ -46,7 +46,7 @@ class MainActivity : Activity() {
     }
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); out.putString("email", email); out.putBoolean("awaitingCode", awaitingCode) }
     // Coming back from the email app keeps the code step on screen.
-    override fun onResume() { super.onResume(); if (store.signedIn) home() else if (awaitingCode && email.isNotEmpty()) codeStep() else signIn() }
+    override fun onResume() { super.onResume(); if (store.signedIn) { if (store.setupDone) home() else setup() } else if (awaitingCode && email.isNotEmpty()) codeStep() else signIn() }
     override fun onPause() { stopPolling(); super.onPause() }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -116,7 +116,8 @@ class MainActivity : Activity() {
                     Schedule.ensure(this)
                     // Straight away: start the first picture; home shows it painting and sets the lock screen when it lands.
                     store.lastWallpaperRequest = System.currentTimeMillis()
-                    home()
+                    Background.run({ runCatching { Picture.refresh(this, true) } }) {}
+                    setup()
                 }.onFailure { status.text = it.message }
             }
         }
@@ -127,6 +128,23 @@ class MainActivity : Activity() {
         })
         c.addView(button("Sign in") { verify() })
         c.addView(button("Use another email", primary = false) { signIn() })
+    }
+
+    // ---- First run: ask where Heartbeat should show. ----
+    private fun setup() {
+        val c = page()
+        c.addView(label("HEARTBEAT", 12f, muted)); c.addView(label("Where should it show?", 30f))
+        c.addView(label("Your first picture is being painted now. Choose where it appears; you can change this any time.", 15f, muted))
+        c.addView(toggle("Lock screen picture", store.lockScreen) { store.lockScreen = it; store.wallpaperId = "" })
+        c.addView(label("Shows when you wake your phone. Notifications appear on top, as usual.", 13f, muted))
+        c.addView(toggle("Home screen wallpaper", store.homeScreen) { store.homeScreen = it; store.wallpaperId = "" })
+        c.addView(label("Behind your apps. A new picture every hour.", 13f, muted))
+        c.addView(button("Screensaver while charging", primary = false) {
+            toast("Choose \"Heartbeat\", then set it to start while charging.")
+            runCatching { startActivity(Intent(Settings.ACTION_DREAM_SETTINGS)) }.onFailure { toast("This phone hides the screensaver setting. Use \"Open frame\" on the next screen while charging.") }
+        })
+        c.addView(label("Turns your phone into a picture frame on the charger. Touch the screen to see notifications.", 13f, muted))
+        c.addView(button("Done") { store.setupDone = true; home() })
     }
 
     // ---- Home: the picture, moods, and where Heartbeat shows. ----

@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.2.1";
+ public const string Version = "1.3.0";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -112,6 +112,7 @@ class Settings {
  public int WallpaperMinutes = 30;
  public bool KeepScreenOn = true;
  public bool Wallpaper = true;
+ public bool Screensaver = true;
  public string PreviousWallpaper, WallpaperId = "";
  public bool SavedWallpaper;
  public long LastWallpaperRequest;
@@ -306,14 +307,19 @@ static class Wallpaper {
 static class Installer {
  const string Desktop = @"Control Panel\Desktop", RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Heartbeat";
  public static void Install() {
-  var answer = MessageBox.Show("Heartbeat will:\n\n•  become your wallpaper, with new pictures while you use the computer\n•  become your screensaver (after 2 minutes idle)\n•  start quietly with Windows, with a small icon by the clock\n•  ask for the email you were invited with\n\nYou can change or remove it any time from the icon or Windows Settings → Apps.", "Install Heartbeat", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
-  if (answer != DialogResult.OK) return;
+  // Ask, don't assume: what should Heartbeat do on this computer?
+  var choices = new InstallForm();
+  if (choices.ShowDialog() != DialogResult.OK) return;
   StopRunningCopies();
   Directory.CreateDirectory(App.InstallDir);
   byte[] self = File.ReadAllBytes(Application.ExecutablePath);
   Replace(App.ExePath, self); Replace(App.ScrPath, self);
-  var settings = Settings.Load(); SetScreensaver(settings, settings.IdleMinutes); settings.Save();
-  using (var run = Registry.CurrentUser.CreateSubKey(RunKey)) run.SetValue("Heartbeat", "\"" + App.ExePath + "\" --tray");
+  var settings = Settings.Load();
+  settings.Wallpaper = choices.Wallpaper; settings.Screensaver = choices.Screensaver;
+  if (choices.Screensaver) SetScreensaver(settings, settings.IdleMinutes);
+  settings.Save();
+  // Starting with Windows keeps the wallpaper current; without it Heartbeat runs only when opened.
+  using (var run = Registry.CurrentUser.CreateSubKey(RunKey)) { if (choices.StartWithWindows) run.SetValue("Heartbeat", "\"" + App.ExePath + "\" --tray"); else run.DeleteValue("Heartbeat", false); }
   using (var u = Registry.CurrentUser.CreateSubKey(UninstallKey)) {
    u.SetValue("DisplayName", "Heartbeat"); u.SetValue("DisplayVersion", App.Version); u.SetValue("Publisher", "Heartbeat");
    u.SetValue("DisplayIcon", App.ExePath); u.SetValue("UninstallString", "\"" + App.ExePath + "\" --uninstall");
@@ -347,18 +353,22 @@ static class Installer {
   Native.SystemParametersInfo(Native.SetScreenSaveTimeout, (uint)(minutes * 60), IntPtr.Zero, Native.UpdateIni | Native.SendChange);
   Native.SystemParametersInfo(Native.SetScreenSaveActive, 1, IntPtr.Zero, Native.UpdateIni | Native.SendChange);
  }
+ /// Puts the previous screensaver back (used by the menu switch and by uninstall).
+ public static void RestoreScreensaver(Settings settings) {
+  using (var d = Registry.CurrentUser.CreateSubKey(Desktop)) {
+   string current = Convert.ToString(d.GetValue("SCRNSAVE.EXE", ""));
+   if (current.IndexOf("Heartbeat", StringComparison.OrdinalIgnoreCase) < 0 && !current.Equals(Native.ShortPath(App.ScrPath), StringComparison.OrdinalIgnoreCase)) return;
+   if (string.IsNullOrEmpty(settings.PreviousSaver)) d.DeleteValue("SCRNSAVE.EXE", false); else d.SetValue("SCRNSAVE.EXE", settings.PreviousSaver);
+   d.SetValue("ScreenSaveActive", string.IsNullOrEmpty(settings.PreviousActive) ? (string.IsNullOrEmpty(settings.PreviousSaver) ? "0" : "1") : settings.PreviousActive);
+   if (!string.IsNullOrEmpty(settings.PreviousTimeout)) d.SetValue("ScreenSaveTimeOut", settings.PreviousTimeout);
+  }
+  Native.SystemParametersInfo(Native.SetScreenSaveActive, string.IsNullOrEmpty(settings.PreviousSaver) ? 0u : 1u, IntPtr.Zero, Native.UpdateIni | Native.SendChange);
+ }
  public static void Uninstall() {
   if (MessageBox.Show("Remove Heartbeat from this computer? Your account and pictures stay safe online.", "Heartbeat", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
   var settings = Settings.Load();
   try { string token = Settings.Token(); if (token != "") new Api(settings.Server, token).Post("/api/product/app/signout", null).Wait(5000); } catch { }
-  using (var d = Registry.CurrentUser.CreateSubKey(Desktop)) {
-   string current = Convert.ToString(d.GetValue("SCRNSAVE.EXE", ""));
-   if (current.IndexOf("Heartbeat", StringComparison.OrdinalIgnoreCase) >= 0 || current.Equals(Native.ShortPath(App.ScrPath), StringComparison.OrdinalIgnoreCase)) {
-    if (string.IsNullOrEmpty(settings.PreviousSaver)) d.DeleteValue("SCRNSAVE.EXE", false); else d.SetValue("SCRNSAVE.EXE", settings.PreviousSaver);
-    if (!string.IsNullOrEmpty(settings.PreviousActive)) d.SetValue("ScreenSaveActive", settings.PreviousActive);
-    if (!string.IsNullOrEmpty(settings.PreviousTimeout)) d.SetValue("ScreenSaveTimeOut", settings.PreviousTimeout);
-   }
-  }
+  RestoreScreensaver(settings);
   try { using (var run = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (run != null) run.DeleteValue("Heartbeat", false); } catch { }
   try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
   try { Wallpaper.Restore(settings); } catch { }
@@ -379,6 +389,30 @@ static class Installer {
    shortcut.TargetPath = App.ExePath; shortcut.Arguments = "--tray"; shortcut.Description = "Heartbeat"; shortcut.Save();
   } catch { }
  }
+}
+
+/// The first screen of the installer: what should Heartbeat do on this computer?
+class InstallForm : Form {
+ readonly CheckBox wall = new CheckBox(), saver = new CheckBox(), start = new CheckBox();
+ public bool Wallpaper { get { return wall.Checked; } }
+ public bool Screensaver { get { return saver.Checked; } }
+ public bool StartWithWindows { get { return start.Checked; } }
+ public InstallForm() {
+  Text = "Install Heartbeat"; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false; StartPosition = FormStartPosition.CenterScreen;
+  ClientSize = new Size(460, 330); BackColor = Color.FromArgb(7, 11, 16); ForeColor = Color.FromArgb(242, 240, 231); Font = new Font("Segoe UI", 10f); Icon = Render.TrayIcon();
+  var title = new Label { Text = "Heartbeat on this computer", Font = new Font("Segoe UI Semilight", 17f), Bounds = new Rectangle(28, 22, 404, 38) };
+  var help = new Label { Text = "A new picture for your time, weather and mood. Choose where it shows; you can change this any time from the icon by the clock.", ForeColor = Color.FromArgb(166, 171, 176), Bounds = new Rectangle(28, 64, 404, 44) };
+  Box(wall, "Use as my wallpaper (a new picture while I use the computer)", 120);
+  Box(saver, "Use as my screensaver (after 2 minutes idle)", 152);
+  Box(start, "Start Heartbeat with Windows (keeps it current)", 184);
+  var ok = new Button { Text = "Install", Bounds = new Rectangle(28, 248, 200, 40), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(252, 104, 75), ForeColor = Color.FromArgb(22, 10, 6), Font = new Font("Segoe UI Semibold", 10.5f), DialogResult = DialogResult.OK };
+  ok.FlatAppearance.BorderSize = 0;
+  var cancel = new Button { Text = "Cancel", Bounds = new Rectangle(240, 248, 120, 40), FlatStyle = FlatStyle.Flat, ForeColor = Color.FromArgb(242, 240, 231), DialogResult = DialogResult.Cancel };
+  var fine = new Label { Text = "Installs for you only. No admin rights. Your previous wallpaper and screensaver come back if you uninstall.", ForeColor = Color.FromArgb(120, 128, 135), Font = new Font("Segoe UI", 8.5f), Bounds = new Rectangle(28, 296, 404, 30) };
+  AcceptButton = ok; CancelButton = cancel;
+  Controls.AddRange(new Control[] { title, help, wall, saver, start, ok, cancel, fine });
+ }
+ void Box(CheckBox box, string text, int y) { box.Text = text; box.Checked = true; box.Bounds = new Rectangle(28, y, 410, 28); box.ForeColor = Color.FromArgb(242, 240, 231); }
 }
 
 /// Downloads a newer version (checked against its SHA-256), swaps it in, and restarts quietly.
@@ -416,7 +450,7 @@ class TrayContext : ApplicationContext {
   if (!owned) { ExitThread(); Environment.Exit(0); return; }
   Updater.CleanOld();
   // Earlier versions defaulted to 5 minutes; move to 2 unless someone picked a time.
-  if (!settings.IdleChosen && settings.IdleMinutes == 5) { try { Installer.SetScreensaver(settings, 2); settings.Save(); } catch { } }
+  if (!settings.IdleChosen && settings.IdleMinutes == 5 && settings.Screensaver) { try { Installer.SetScreensaver(settings, 2); settings.Save(); } catch { } }
   icon.Icon = Render.TrayIcon(); icon.Text = "Heartbeat"; icon.Visible = true;
   icon.ContextMenuStrip = new ContextMenuStrip(); icon.ContextMenuStrip.Opening += (s, e) => BuildMenu();
   icon.MouseUp += (s, e) => { if (e.Button == MouseButtons.Left) { if (Settings.Token() == "") SignIn(); else typeof(NotifyIcon).GetMethod("ShowContextMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(icon, null); } };
@@ -503,13 +537,16 @@ class TrayContext : ApplicationContext {
    var wall = new ToolStripMenuItem("Use as wallpaper") { Checked = settings.Wallpaper };
    wall.Click += (s, e) => { try { settings.Wallpaper = !settings.Wallpaper; settings.Save(); if (settings.Wallpaper) { Wallpaper.Apply(settings); Tick(false); } else Wallpaper.Restore(settings); } catch (Exception x) { Say(x.Message); } };
    m.Items.Add(wall);
+   var saverItem = new ToolStripMenuItem("Use as screensaver") { Checked = settings.Screensaver };
+   saverItem.Click += (s, e) => { try { settings.Screensaver = !settings.Screensaver; if (settings.Screensaver) Installer.SetScreensaver(settings, settings.IdleMinutes); else Installer.RestoreScreensaver(settings); settings.Save(); Say(settings.Screensaver ? "Heartbeat is your screensaver again." : "Your previous screensaver is back."); } catch (Exception x) { Say(x.Message); } };
+   m.Items.Add(saverItem);
    if (settings.Paused) m.Items.Add("Resume new pictures", null, (s, e) => { settings.PausedUntil = 0; settings.Save(); Say("New pictures are back on."); });
    else m.Items.Add("Pause new pictures for 1 hour", null, (s, e) => { settings.PausedUntil = DateTime.UtcNow.AddHours(1).Ticks; settings.Save(); Say("Paused for an hour. The screensaver still shows your latest picture."); });
    var after = new ToolStripMenuItem("Screensaver starts after");
    foreach (int minutes in new[] { 1, 2, 5, 10, 15, 30 }) {
     int value = minutes;
     var item = new ToolStripMenuItem(minutes == 1 ? "1 minute" : minutes + " minutes") { Checked = settings.IdleMinutes == minutes };
-    item.Click += (s, e) => { try { Installer.SetScreensaver(settings, value); settings.IdleChosen = true; settings.Save(); Say("Heartbeat now appears after " + value + " minutes idle."); } catch (Exception x) { Say(x.Message); } };
+    item.Click += (s, e) => { try { if (settings.Screensaver) Installer.SetScreensaver(settings, value); else settings.IdleMinutes = value; settings.IdleChosen = true; settings.Save(); Say("Heartbeat now appears after " + value + " minutes idle."); } catch (Exception x) { Say(x.Message); } };
     after.DropDownItems.Add(item);
    }
    m.Items.Add(after);
