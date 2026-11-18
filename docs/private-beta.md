@@ -100,6 +100,21 @@ display is open and visible. Removing a tester signs them out at once. **Picture
 tester's row, type minutes between pictures and a daily limit and press Save (empty = defaults:
 60 minutes, 30 a day). Only you can open `/admin`; for everyone else it doesn't exist.
 
+## Managing the test from your dashboard
+
+- **Access requests:** people can ask to join from the website (Request access). You get an email
+  (reply goes to them) and the request appears under **Access requests** with **Invite** and
+  **Dismiss**. Inviting marks it handled; they can then sign in with that email.
+- **Picture pace:** each row (including yours) has three boxes: minutes between pictures, the most
+  pictures per day, and a **total** for the whole test (empty = 60 min, 30 a day, no total). Change
+  as many rows as you like; a bar appears with **Save changes** and **Discard**. Nothing applies until
+  you save, and if you try to leave with unsaved changes the browser asks first. Saved values stay
+  until you change them; no restart is needed, they apply from each person's next picture.
+- **Change log:** every invite, removal, pace change, dismissed request and export, with who did it,
+  when, and the before and after values.
+- **Export data:** CSV files (open in Excel, Numbers or Google Sheets) for testers, screen sessions,
+  pictures, activity, the change log, access requests and daily totals.
+
 ## Good to know
 
 - Your local database (`.wrangler/state`) holds everything: accounts, pictures and statistics.

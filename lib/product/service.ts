@@ -10,7 +10,7 @@ import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
 import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
 import {appRoute,createPictureLink} from './app-api.ts';
-import {adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
+import {accessRequest,adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
  const clock=deps.now||Date.now,fetcher=deps.fetcher||fetch;
@@ -24,6 +24,8 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    if(request.method!=='GET')checkOrigin(request,env);
    if(path.startsWith('device/')&&!['device/approve','device/revoke'].includes(path)) {const device=await deviceRoute(request,env,path,now);if(device)return device;}
    if(path==='plans'&&request.method==='GET') {if(billingReady(env))await rate(env,`prices:${request.headers.get('cf-connecting-ip')||'local'}`,now,20,60000);return json({plans:Object.values(PLANS),billingReady:billingReady(env),prices:await priceCatalog(env,fetcher)});}
+   // Public: ask to join the private test (the owner gets an email and sees it on the dashboard).
+   if(path==='access-request'&&request.method==='POST')return await accessRequest(request,env,now,fetcher);
    if(path==='auth/code/send'&&request.method==='POST')return await sendCode(request,env,now,fetcher);
    if(path==='auth/code/verify'&&request.method==='POST')return await verifyCode(request,env,now);
    // The private beta signs in with emailed codes only; passwords and Google stay off so the invite list holds.

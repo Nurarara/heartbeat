@@ -31,7 +31,7 @@ export function CodeSignIn({ onSignedIn }: { onSignedIn: () => Promise<void> }) 
     <p className="hp-eyebrow">PRIVATE TEST</p>
     <h1>{step === 'email' ? <>Come<br /><em>on in.</em></> : <>Check your<br /><em>email.</em></>}</h1>
     <p>{step === 'email' ? 'Enter the email you were invited with. We’ll send you a six-digit code. No password needed.' : <>We sent a code to <strong>{address}</strong>. It works for 10 minutes.</>}</p>
-    {message && <p className="hp-message hp-auth-feedback" role="status">{message}</p>}
+    {message && <p className="hp-message hp-auth-feedback" role="status">{message}{/invite list/.test(message) && <> <a href="/#request">Request access</a></>}</p>}
     {step === 'email' ? <form onSubmit={send}>
       <label>Email address<input type="email" autoComplete="email" required autoFocus value={address} onChange={event => setAddress(event.target.value)} placeholder="you@example.com" /></label>
       <button className="hp-button" disabled={busy}>{busy ? 'Sending…' : 'Send my code'}<ArrowRight size={17} /></button>

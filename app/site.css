@@ -114,3 +114,16 @@
  .ps-hero-art img{transition:none;transform:none}.ps-reveal{opacity:1;transform:none;transition:none}.ps-hero-copy,.ps-pulse,.ps-scroll span{animation:none}
  .ps-mood,.ps-mood img,.ps-button,.ps-device{transition:none}
 }
+
+/* Request access */
+.ps-request{padding:clamp(80px,12vw,140px) clamp(16px,5vw,64px) 40px}
+.ps-request-form{max-width:720px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:640px){.ps-request-form{grid-template-columns:1fr}}
+.ps-request-form label{display:grid;gap:8px;font-size:13px;color:#cfd0cc}.ps-request-form label span{color:var(--muted)}
+.ps-request-form input,.ps-request-form textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;color:var(--text);font:inherit;font-size:15px;resize:vertical}
+.ps-request-form input:focus,.ps-request-form textarea:focus{outline:none;border-color:#fc684b99;box-shadow:0 0 0 3px #fc684b22}
+.ps-wide{grid-column:1/-1}.ps-request-form .ps-button{justify-self:start}
+.ps-trap{position:absolute!important;left:-9999px;width:1px;height:1px;overflow:hidden}
+.ps-request-done{max-width:640px;margin:0 auto;text-align:center;font-size:18px;padding:28px;border:1px solid #fc684b55;border-radius:18px;background:#fc684b10}
+.ps-request-error{grid-column:1/-1;color:#ff9b87;margin:0;font-size:14px}
+.ps-request-form .ps-label{color:#cfd0cc}

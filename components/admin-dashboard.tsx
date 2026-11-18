@@ -1,16 +1,18 @@
 "use client";
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Clock3, Image as ImageIcon, MonitorSmartphone, RefreshCw, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
+import { Activity, Clock3, Download, History, Image as ImageIcon, Inbox, MonitorSmartphone, RefreshCw, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
 import { Brand, productAPI } from './product-shell';
 import { MOODS, parseMood } from '@/lib/moods';
 
-type Tester = { email: string; note: string; invited_at: number; rhythm_minutes: number | null; daily_limit: number | null; user_id: string | null; joined_at: number | null; last_sign_in: number | null; last_seen: number | null; sessions: number; seconds: number; seconds_today: number; pictures: number; pictures_today: number; mood: string | null; device: string | null };
+type Tester = { email: string; note: string; invited_at: number; rhythm_minutes: number | null; daily_limit: number | null; total_limit: number | null; user_id: string | null; joined_at: number | null; last_sign_in: number | null; last_seen: number | null; sessions: number; seconds: number; seconds_today: number; pictures: number; pictures_today: number; mood: string | null; device: string | null };
 type Session = { id: string; email: string; device: string; mood: string; started_at: number; last_seen: number; seconds: number };
 type Overview = {
   generatedAt: number; days: number; seats: number; beta: boolean; cadenceMinutes: number; dailyPicturesPerTester: number;
   budget: { capMicros: number; spentMicros: number; reservedMicros: number; attempts: number; imageEstimateMicros: number; painter: string };
   testers: Tester[]; series: { day: string; seconds: number; viewers: number; sessions: number; pictures: number }[];
   hourly: { hour: number; seconds: number }[]; moods: { mood: string; seconds: number }[]; devices: { device: string; seconds: number; sessions: number }[];
+  requests: { id: string; email: string; name: string; note: string; status: 'new' | 'invited' | 'dismissed'; created_at: number; handled_at: number | null }[];
+  changes: { actor: string; target: string; action: string; before: string; after: string; created_at: number }[];
   jobs: { id: string; email: string; status: string; reason: string | null; created_at: number; updated_at: number }[];
   liveNow: Session[]; sessions: Session[]; activity: { kind: string; email: string; detail: string; created_at: number }[];
 };
@@ -29,7 +31,7 @@ const shortDay = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateStrin
 const money = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
 const moodLabel = (mood: string | null) => mood ? MOODS[parseMood(mood)].label : '—';
 const JOB: Record<string, string> = { ready: 'Ready', done: 'Ready', held: 'Kept current', failed: 'Failed', outcome_unknown: 'Failed', canceled: 'Cancelled' };
-const KIND: Record<string, string> = { joined: 'joined the test', sign_in: 'signed in', code_sent: 'asked for a code', not_invited: 'tried to sign in (not invited)', screen_open: 'opened a screen', mood: 'changed mood', invited: 'was invited', removed: 'was removed', pace: 'picture pace set' };
+const KIND: Record<string, string> = { joined: 'joined the test', sign_in: 'signed in', code_sent: 'asked for a code', not_invited: 'tried to sign in (not invited)', screen_open: 'opened a screen', mood: 'changed mood', invited: 'was invited', removed: 'was removed', pace: 'picture pace set', requested: 'asked for access', picture_link: 'created an iPhone picture link' };
 
 type Bar = { label: string; value: number; tip: string };
 const STEPS = { time: [30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800], count: [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000] };
@@ -72,21 +74,21 @@ function Breakdown({ title, rows, total }: { title: string; rows: { key: string;
   </section>;
 }
 
-/** Per-tester picture rhythm and daily limit. Empty boxes mean the defaults. */
-function PaceEditor({ tester, defaults, onSaved }: { tester: Tester; defaults: { minutes: number; daily: number }; onSaved: (message: string) => void }) {
-  const [minutes, setMinutes] = useState(tester.rhythm_minutes ? String(tester.rhythm_minutes) : ''), [daily, setDaily] = useState(tester.daily_limit ? String(tester.daily_limit) : ''), [busy, setBusy] = useState(false);
-  const changed = minutes !== (tester.rhythm_minutes ? String(tester.rhythm_minutes) : '') || daily !== (tester.daily_limit ? String(tester.daily_limit) : '');
-  async function save(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true);
-    try { await productAPI('admin/pace', { email: tester.email, rhythmMinutes: minutes === '' ? null : Number(minutes), dailyLimit: daily === '' ? null : Number(daily) }); onSaved(`${tester.email}: ${minutes ? `a new picture every ${minutes} min` : `default (${defaults.minutes} min)`}, ${daily ? `up to ${daily} a day` : `default limit (${defaults.daily})`}.`); }
-    catch (e) { onSaved((e as Error).message); } finally { setBusy(false); }
-  }
-  return <form className="ad-pace" onSubmit={save}>
-    <label>every<input inputMode="numeric" pattern="[0-9]*" placeholder={String(defaults.minutes)} value={minutes} onChange={e => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-label={`Minutes between pictures for ${tester.email}`} />min</label>
-    <label>max<input inputMode="numeric" pattern="[0-9]*" placeholder={String(defaults.daily)} value={daily} onChange={e => setDaily(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-label={`Pictures per day for ${tester.email}`} />/day</label>
-    {changed && <button className="ad-button ad-primary ad-tiny" disabled={busy}>Save</button>}
-  </form>;
+type Pace = { minutes: string; daily: string; total: string };
+const savedPace = (t: Tester): Pace => ({ minutes: t.rhythm_minutes ? String(t.rhythm_minutes) : '', daily: t.daily_limit ? String(t.daily_limit) : '', total: t.total_limit ? String(t.total_limit) : '' });
+const samePace = (a: Pace, b: Pace) => a.minutes === b.minutes && a.daily === b.daily && a.total === b.total;
+const digits = (v: string, n: number) => v.replace(/\D/g, '').slice(0, n);
+
+/** Per-tester picture rhythm, daily limit and total limit. Empty boxes mean the defaults (no total limit). */
+function PaceEditor({ email, value, defaults, dirty, onChange }: { email: string; value: Pace; defaults: { minutes: number; daily: number }; dirty: boolean; onChange: (next: Pace) => void }) {
+  return <div className="ad-pace" data-dirty={dirty}>
+    <label>every<input inputMode="numeric" placeholder={String(defaults.minutes)} value={value.minutes} onChange={e => onChange({ ...value, minutes: digits(e.target.value, 4) })} aria-label={`Minutes between pictures for ${email}`} />min</label>
+    <label>max<input inputMode="numeric" placeholder={String(defaults.daily)} value={value.daily} onChange={e => onChange({ ...value, daily: digits(e.target.value, 3) })} aria-label={`Pictures per day for ${email}`} />/day</label>
+    <label>total<input inputMode="numeric" placeholder="∞" value={value.total} onChange={e => onChange({ ...value, total: digits(e.target.value, 6) })} aria-label={`Total pictures for ${email}`} /></label>
+  </div>;
 }
+
+const EXPORTS: [string, string][] = [['testers', 'Testers'], ['sessions', 'Screen sessions'], ['pictures', 'Pictures'], ['activity', 'Activity'], ['changes', 'Change log'], ['requests', 'Access requests'], ['daily', 'Daily totals']];
 
 function Stat({ icon, label, value, note, tone }: { icon: React.ReactNode; label: string; value: string; note?: string; tone?: 'live' | 'warn' }) {
   return <div className="ad-stat" data-tone={tone}><span className="ad-stat-label">{icon}{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>;
@@ -95,6 +97,27 @@ function Stat({ icon, label, value, note, tone }: { icon: React.ReactNode; label
 export function AdminDashboard() {
   const [data, setData] = useState<Overview | null>(null), [error, setError] = useState(''), [days, setDays] = useState(14), [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState(''), [note, setNote] = useState(''), [message, setMessage] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, Pace>>({}), [saving, setSaving] = useState(false);
+  const dirtyEmails = data ? data.testers.filter(t => drafts[t.email] && !samePace(drafts[t.email], savedPace(t))).map(t => t.email) : [];
+  useEffect(() => {
+    if (!dirtyEmails.length) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
+  }, [dirtyEmails.length]);
+  async function saveAll() {
+    setSaving(true); setMessage('');
+    const failed: string[] = [], done: string[] = [];
+    for (const address of dirtyEmails) {
+      const d = drafts[address];
+      try { await productAPI('admin/pace', { email: address, rhythmMinutes: d.minutes === '' ? null : Number(d.minutes), dailyLimit: d.daily === '' ? null : Number(d.daily), totalLimit: d.total === '' ? null : Number(d.total) }); done.push(address); }
+      catch (e) { failed.push(`${address}: ${(e as Error).message}`); }
+    }
+    setDrafts(current => { const next = { ...current }; for (const a of done) delete next[a]; return next; });
+    setMessage(failed.length ? `Saved ${done.length}. Not saved: ${failed.join(' · ')}` : `Saved ${done.length} ${done.length === 1 ? 'change' : 'changes'}. They apply from each person’s next picture; no restart needed.`);
+    await load(); setSaving(false);
+  }
+  async function dismiss(id: string) { setBusy(true); try { await productAPI('admin/request', { id, action: 'dismiss' }); await load(); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }
+  async function inviteRequest(r: { email: string; name: string }) { setBusy(true); try { await productAPI('admin/invite', { email: r.email, note: r.name }); setMessage(`${r.email} can now sign in. Let them know!`); await load(); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }
   const load = useCallback(async () => {
     try { setData(await productAPI<Overview>(`admin/overview?days=${days}&tz=${new Date().getTimezoneOffset()}`)); setError(''); }
     catch (e) { const text = (e as Error).message; if (/sign in/i.test(text)) location.replace('/auth?next=%2Fadmin'); else setError(text); }
@@ -131,6 +154,7 @@ export function AdminDashboard() {
       <Stat icon={<Clock3 size={14} />} label="Watch time today" value={duration(today?.seconds || 0)} note={`${today?.viewers || 0} people · ${today?.sessions || 0} sessions`} />
       <Stat icon={<Clock3 size={14} />} label={`Watch time, ${data.days} days`} value={duration(range)} note={`Average session ${duration(sessions ? range / sessions : 0)}`} />
       <Stat icon={<ImageIcon size={14} />} label="Pictures today" value={String(today?.pictures || 0)} note={`Default: every ${data.cadenceMinutes} min · up to ${data.dailyPicturesPerTester} each a day`} />
+      <a href="#requests" className="ad-stat-link"><Stat icon={<Inbox size={14} />} label="Access requests" value={String(data.requests.filter(r => r.status === 'new').length)} note="waiting for you" tone={data.requests.some(r => r.status === 'new') ? 'warn' : undefined} /></a>
       <Stat icon={<Wallet size={14} />} label="Spent today (UTC)" value={money(used)} note={cap ? `of ${money(cap)} daily cap · ${data.budget.painter}` : 'No daily cap set'} tone={share >= .8 ? 'warn' : undefined} />
     </section>
     {cap > 0 && <div className="ad-meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={used} aria-label="Daily spend"><span style={{ width: `${Math.min(100, share * 100)}%` }} data-warn={share >= .8} /><small>{share >= 1 ? 'Daily cap reached: screens keep their last picture until midnight UTC.' : `${Math.round(share * 100)}% of today’s cap used`}</small></div>}
@@ -145,6 +169,14 @@ export function AdminDashboard() {
       <Breakdown title="Devices (watch time)" total={deviceTotal} rows={data.devices.map(d => ({ key: d.device, label: d.device[0].toUpperCase() + d.device.slice(1), value: Number(d.seconds) }))} />
     </div>
 
+    <section className="ad-card" id="requests"><header><h2>Access requests</h2><span className="ad-sub"><Inbox size={14} aria-hidden="true" /> {data.requests.filter(r => r.status === 'new').length} waiting · people who asked on the website</span></header>
+      {data.requests.length ? <div className="ad-scroll"><table className="ad-table"><thead><tr><th>Asked</th><th>Person</th><th>Their note</th><th>Status</th><th /></tr></thead><tbody>
+        {data.requests.map(r => <tr key={r.id} data-status={r.status}><td>{clock(r.created_at)}</td><td><strong>{r.name || '—'}</strong><small>{r.email}</small></td><td className="ad-reason">{r.note || ''}</td>
+          <td><span className="ad-status" data-status={r.status === 'new' ? 'watching' : r.status === 'invited' ? 'joined' : 'invited'}>{r.status === 'new' ? 'Waiting' : r.status === 'invited' ? 'Invited' : 'Dismissed'}</span></td>
+          <td className="ad-actions">{r.status === 'new' && <><button className="ad-button ad-primary ad-tiny" disabled={busy} onClick={() => void inviteRequest(r)}>Invite</button><button className="ad-button ad-tiny" disabled={busy} onClick={() => void dismiss(r.id)}>Dismiss</button></>}</td></tr>)}
+      </tbody></table></div> : <p className="ad-empty">No requests yet. They appear here (and in your inbox) when someone asks on the website.</p>}
+    </section>
+
     <section className="ad-card"><header><h2>Testers</h2><span className="ad-sub">{people.length} invited · {data.seats} places</span></header>
       <form className="ad-invite" onSubmit={add}><UserPlus size={16} aria-hidden="true" /><input type="email" required placeholder="friend@example.com" value={invite} onChange={e => setInvite(e.target.value)} aria-label="Email to invite" /><input placeholder="Note (optional), e.g. Sam, iPad" value={note} maxLength={80} onChange={e => setNote(e.target.value)} aria-label="Note" /><button className="ad-button ad-primary" disabled={busy}>Invite</button></form>
       {message && <p className="ad-message" role="status">{message}</p>}
@@ -153,7 +185,7 @@ export function AdminDashboard() {
         <tbody>{data.testers.map(t => {
           const live = !!t.last_seen && now - t.last_seen < 120000, status = live ? 'Watching' : t.user_id ? 'Joined' : 'Invited';
           return <tr key={t.email}><td><strong>{t.email}</strong>{t.note && <small>{t.note}</small>}</td><td><span className="ad-status" data-status={status.toLowerCase()}>{status}</span></td>
-            <td>{t.joined_at ? clock(t.joined_at) : '—'}</td><td title={t.last_seen ? clock(t.last_seen) : ''}>{ago(t.last_seen, now)}</td><td className="ad-num">{t.sessions}</td><td className="ad-num">{duration(t.seconds)}</td><td className="ad-num">{duration(t.seconds_today)}</td><td className="ad-num">{duration(t.sessions ? t.seconds / t.sessions : 0)}</td><td className="ad-num">{t.pictures}{t.pictures_today ? <small> +{t.pictures_today} today</small> : null}</td><td>{moodLabel(t.mood)}</td><td>{t.device || '—'}</td><td><PaceEditor key={`${t.email}:${t.rhythm_minutes}:${t.daily_limit}`} tester={t} defaults={{ minutes: data.cadenceMinutes, daily: data.dailyPicturesPerTester }} onSaved={text => { setMessage(text); void load(); }} /></td>
+            <td>{t.joined_at ? clock(t.joined_at) : '—'}</td><td title={t.last_seen ? clock(t.last_seen) : ''}>{ago(t.last_seen, now)}</td><td className="ad-num">{t.sessions}</td><td className="ad-num">{duration(t.seconds)}</td><td className="ad-num">{duration(t.seconds_today)}</td><td className="ad-num">{duration(t.sessions ? t.seconds / t.sessions : 0)}</td><td className="ad-num">{t.pictures}{t.pictures_today ? <small> +{t.pictures_today} today</small> : null}</td><td>{moodLabel(t.mood)}</td><td>{t.device || '—'}</td><td><PaceEditor email={t.email} value={drafts[t.email] ?? savedPace(t)} dirty={dirtyEmails.includes(t.email)} defaults={{ minutes: data.cadenceMinutes, daily: data.dailyPicturesPerTester }} onChange={next => setDrafts(current => ({ ...current, [t.email]: next }))} /></td>
             <td>{t.note !== 'You (owner)' && <button className="ad-icon" aria-label={`Remove ${t.email}`} title="Remove from test" disabled={busy} onClick={() => void remove(t.email)}><Trash2 size={14} /></button>}</td></tr>;
         })}</tbody></table></div>
     </section>
@@ -174,6 +206,17 @@ export function AdminDashboard() {
         {data.activity.length ? <ol className="ad-feed">{data.activity.map((a, i) => <li key={i}><time>{clock(a.created_at)}</time><span><strong>{a.email || 'someone'}</strong> {KIND[a.kind] || a.kind}{a.detail ? <em> · {a.detail}</em> : null}</span></li>)}</ol> : <p className="ad-empty">Nothing yet.</p>}
       </section>
     </div>
+    <section className="ad-card"><header><h2>Change log</h2><span className="ad-sub"><History size={14} aria-hidden="true" /> every change you make, with before and after</span></header>
+      {data.changes.length ? <div className="ad-scroll"><table className="ad-table"><thead><tr><th>When</th><th>By</th><th>Person</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
+        {data.changes.map((c, i) => <tr key={i}><td>{clock(c.created_at)}</td><td>{c.actor}</td><td>{c.target || '—'}</td><td>{c.action}</td><td className="ad-reason">{c.before || '—'}</td><td className="ad-reason">{c.after || '—'}</td></tr>)}
+      </tbody></table></div> : <p className="ad-empty">No changes yet.</p>}
+    </section>
+
+    <section className="ad-card"><header><h2>Export data</h2><span className="ad-sub">CSV files that open in Excel, Numbers or Google Sheets</span></header>
+      <div className="ad-exports">{EXPORTS.map(([kind, label]) => <a key={kind} className="ad-button" href={`/api/product/admin/export?kind=${kind}`} download><Download size={14} />{label}</a>)}</div>
+    </section>
+
+    {dirtyEmails.length > 0 && <div className="ad-savebar" role="region" aria-label="Unsaved changes"><span>{dirtyEmails.length} unsaved {dirtyEmails.length === 1 ? 'change' : 'changes'}: {dirtyEmails.join(', ')}</span><div><button className="ad-button" disabled={saving} onClick={() => setDrafts({})}>Discard</button><button className="ad-button ad-primary" disabled={saving} onClick={() => void saveAll()}>{saving ? 'Saving…' : 'Save changes'}</button></div></div>}
     <p className="ad-foot">Watch time counts only while a display is open and visible. Spend is the server’s estimate from each picture’s cost, reset at midnight UTC.</p>
   </div>;
 }

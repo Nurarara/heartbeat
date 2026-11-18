@@ -106,7 +106,7 @@ export function PublicSite() {
           {primary ? <a className="ps-button" href={primary.href} download={platform !== 'iphone' ? true : undefined}>{platform === 'iphone' ? <Apple size={17} /> : <Download size={17} />}{primary.label}</a> : <a className="ps-button" href="/download"><Download size={17} />Get Heartbeat</a>}
           <a className="ps-button ps-ghost" href="/auth">Sign in</a>
         </div>
-        <p className="ps-fine">{primary ? primary.note + ' · ' : ''}Free during the private test. <a href="/download">All devices</a></p>
+        <p className="ps-fine">{primary ? primary.note + ' · ' : ''}Free during the private test. <a href="#request">Request access</a> · <a href="/download">All devices</a></p>
       </div>
       <div className="ps-hero-meta" aria-hidden="true"><Clock /><span>{mood ? `${mood.label} · ${mood.line}` : 'A new picture, every hour'}</span></div>
       <a className="ps-scroll" href="#how" aria-label="Scroll to how it works"><span /></a>
@@ -153,12 +153,43 @@ export function PublicSite() {
       <div className="ps-faq-list ps-reveal">{FAQ.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
     </section>
 
+    <RequestAccess />
+
     <section className="ps-final ps-reveal">
       <Sparkles size={22} /><h2>Let the day in. <em>Leave the noise outside.</em></h2>
       <div className="ps-ctas ps-center"><a className="ps-button" href="/download"><Download size={17} />Get Heartbeat</a><a className="ps-button ps-ghost" href="/auth">Sign in</a></div>
     </section>
     <SiteFooter />
   </div>;
+}
+
+/** Ask to join the private test. The owner gets an email and sees it on the dashboard. */
+function RequestAccess() {
+  const [name, setName] = useState(''), [address, setAddress] = useState(''), [note, setNote] = useState(''), [trap, setTrap] = useState('');
+  const [state, setState] = useState<'idle' | 'sending' | 'done'>('idle'), [error, setError] = useState('');
+  async function send(event: React.FormEvent) {
+    event.preventDefault(); setState('sending'); setError('');
+    try {
+      const r = await fetch('/api/product/access-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email: address, note, website: trap }) });
+      const d = await r.json() as { error?: string };
+      if (!r.ok) throw new Error(d.error || 'Please try again in a moment.');
+      setState('done');
+    } catch (e) { setError((e as Error).message); setState('idle'); }
+  }
+  return <section id="request" className="ps-request ps-reveal" aria-labelledby="request-title">
+    <div className="ps-section-head"><p className="ps-eyebrow">PRIVATE TEST</p><h2 id="request-title">Want to <em>try it?</em></h2><p>Heartbeat is in a small private test. Leave your email and we’ll let you know when there’s a place for you.</p></div>
+    {state === 'done' ? <p className="ps-request-done" role="status">Thank you. We’ll email you when there’s a place for you.</p> :
+    <form className="ps-request-form" onSubmit={send}>
+      <label>Your name<input value={name} onChange={e => setName(e.target.value)} maxLength={80} autoComplete="name" placeholder="Alex" /></label>
+      <label>Email<input type="email" required value={address} onChange={e => setAddress(e.target.value)} maxLength={254} autoComplete="email" placeholder="you@example.com" /></label>
+      <label className="ps-wide"><span className="ps-label">Anything you’d like to tell us? <span>(optional)</span></span><textarea value={note} onChange={e => setNote(e.target.value)} maxLength={500} rows={3} placeholder="Which screens would you use it on?" /></label>
+      {/* Hidden from people; robots fill it in. */}
+      <label className="ps-trap" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={trap} onChange={e => setTrap(e.target.value)} /></label>
+      <button className="ps-button" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Request access'}<ArrowRight size={16} /></button>
+      {error && <p className="ps-request-error" role="alert">{error}</p>}
+      <p className="ps-fine ps-wide">We only use your email to reply about Heartbeat. <a href="/privacy">Privacy</a></p>
+    </form>}
+  </section>;
 }
 
 function DeviceCard({ icon, name, what, href, cta, current }: { icon: React.ReactNode; name: string; what: string; href: string; cta: string; current: boolean }) {
@@ -178,6 +209,6 @@ export const FAQ: [string, string][] = [
   ['Why does Windows or my Mac warn me when I install it?', 'Heartbeat is new, and paid “trusted developer” certificates come later. Windows: choose More info → Run anyway. Mac: open System Settings → Privacy & Security → Open Anyway. The download page walks you through it.'],
   ['Is it on the App Store or Google Play?', 'Not yet. Android is being prepared for Google Play; for now, download it here. On iPhone and iPad, Heartbeat works as a Home Screen app plus a lock screen picture through Apple’s Shortcuts app, with no App Store needed.'],
   ['What do you know about me?', 'Your email, the city you choose, your mood, your pictures, and when and for how long a Heartbeat screen is showing. No precise location, contacts, photos or ads. Read the privacy notice for the details.'],
-  ['How do I get access?', 'Heartbeat is in a small private test. If you were invited, sign in with that email. Otherwise, email hello@heartbeatart.co.uk and we’ll let you know when it opens.'],
+  ['How do I get access?', 'Heartbeat is in a small private test. If you were invited, sign in with that email. Otherwise, use “Request access” on this page and we’ll email you when there’s a place for you.'],
   ['How do I stop or remove it?', 'Windows: right-click the Heartbeat icon by the clock → Uninstall. Mac: menu bar icon → Quit, then drag Heartbeat to the Bin. Android: uninstall like any app. Your previous wallpaper and screensaver are put back.'],
 ];

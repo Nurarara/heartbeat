@@ -190,3 +190,71 @@ console.log('private beta: ok');
   h.close();
   console.log('unproven password removed on code sign-in: ok');
 }
+
+// Access requests, total picture limit, change log and exports.
+{
+  const k = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: 'boss@example.test', HEARTBEAT_EMAIL_API_KEY: 'k', HEARTBEAT_EMAIL_FROM: 'Heartbeat <h@example.test>' } });
+  const code = a => k.emails.filter(m => m.to[0] === a).at(-1).subject.slice(0, 6);
+  await k.call('auth/code/send', { email: 'boss@example.test' });
+  const boss = (await k.call('auth/code/verify', { email: 'boss@example.test', code: code('boss@example.test') })).headers.get('set-cookie').split(';')[0];
+
+  // Someone asks to join: saved, and the owner is emailed (with reply-to the person).
+  const asked = await k.call('access-request', { name: 'Priya', email: 'Priya@Example.test', note: 'I have a spare tablet' });
+  assert.equal(asked.status, 200); assert.match((await asked.json()).message, /Thank you/);
+  const mail = k.emails.find(m => m.to[0] === 'boss@example.test' && /access request/.test(m.subject));
+  assert.ok(mail); assert.equal(mail.reply_to, 'priya@example.test'); assert.match(mail.text, /spare tablet/); assert.match(mail.text, /\/admin#requests/);
+  // Asking twice doesn't duplicate; robots (honeypot) and invited people aren't stored; bad emails are refused.
+  await k.call('access-request', { name: 'Priya', email: 'priya@example.test' });
+  await k.call('access-request', { name: 'Bot', email: 'bot@example.test', website: 'http://spam' });
+  assert.equal(k.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_access_requests').get().n, 1);
+  assert.equal((await k.call('access-request', { email: 'not-an-email' })).status, 400);
+  assert.equal((await k.call('access-request', { email: 'x@example.test' }, { origin: 'https://evil.example' })).status, 403, 'Other sites cannot submit it');
+
+  // The owner sees it, invites from it (it becomes handled) or dismisses it; both are logged.
+  let view = await (await k.call('admin/overview?days=7&tz=0', undefined, { cookie: boss })).json();
+  assert.equal(view.requests.length, 1); assert.equal(view.requests[0].status, 'new'); assert.equal(view.requests[0].name, 'Priya');
+  await k.call('admin/invite', { email: 'priya@example.test', note: 'Priya' }, { cookie: boss });
+  view = await (await k.call('admin/overview?days=7&tz=0', undefined, { cookie: boss })).json();
+  assert.equal(view.requests[0].status, 'invited');
+  await k.call('access-request', { name: 'Leo', email: 'leo@example.test' });
+  const leo = k.sqlite.prepare("SELECT id FROM hb_access_requests WHERE email='leo@example.test'").get().id;
+  assert.equal((await k.call('admin/request', { id: leo, action: 'dismiss' }, { cookie: boss })).status, 200);
+  assert.equal(k.sqlite.prepare('SELECT status FROM hb_access_requests WHERE id=?').get(leo).status, 'dismissed');
+
+  // Total limit: once a tester has had that many pictures, no more are made.
+  assert.equal((await k.call('admin/pace', { email: 'priya@example.test', rhythmMinutes: 10, dailyLimit: 5, totalLimit: 2 }, { cookie: boss })).status, 200);
+  assert.equal((await k.call('admin/pace', { email: 'priya@example.test', totalLimit: 0 }, { cookie: boss })).status, 400);
+  assert.equal((await k.call('admin/pace', { email: 'priya@example.test', totalLimit: true }, { cookie: boss })).status, 400);
+  await k.call('auth/code/send', { email: 'priya@example.test' });
+  const priyaCookie = (await k.call('auth/code/verify', { email: 'priya@example.test', code: code('priya@example.test') })).headers.get('set-cookie').split(';')[0];
+  const priya = k.sqlite.prepare("SELECT id FROM hb_users WHERE email='priya@example.test'").get().id;
+  for (let i = 0; i < 2; i++) k.sqlite.prepare("INSERT INTO hb_jobs(id,owner,request_id,input,status,created_at,updated_at) VALUES (?,?,?,'{}','done',?,?)").run(crypto.randomUUID(), priya, crypto.randomUUID(), k.now() - 2 * 86400000, k.now());
+  const blocked = (await (await k.call('auth/session', undefined, { cookie: priyaCookie })).json()).access;
+  assert.equal(blocked.eligible, false); assert.match(blocked.reason, /all the pictures for this test/);
+  assert.equal(blocked.cadence, 600000);
+
+  // Saving the same values again is not logged twice; the change log shows before and after.
+  await k.call('admin/pace', { email: 'priya@example.test', rhythmMinutes: 10, dailyLimit: 5, totalLimit: 2 }, { cookie: boss });
+  view = await (await k.call('admin/overview?days=7&tz=0', undefined, { cookie: boss })).json();
+  const paceChanges = view.changes.filter(c => c.action === 'picture pace');
+  assert.equal(paceChanges.length, 1);
+  assert.equal(paceChanges[0].before, 'default rhythm · default per day · no total limit');
+  assert.equal(paceChanges[0].after, 'every 10 min · 5/day · 2 total');
+  assert.equal(paceChanges[0].actor, 'boss@example.test'); assert.equal(paceChanges[0].target, 'priya@example.test');
+  assert.ok(view.changes.some(c => c.action === 'invited' && c.target === 'priya@example.test'));
+  assert.ok(view.changes.some(c => c.action === 'request dismissed' && c.target === 'leo@example.test'));
+  assert.equal(view.testers.find(t => t.email === 'priya@example.test').total_limit, 2);
+
+  // Exports: CSV for the owner only, spreadsheet formulas neutralised.
+  await k.call('access-request', { name: '=HYPERLINK("http://x")', email: 'formula@example.test' });
+  for (const kind of ['testers', 'sessions', 'pictures', 'activity', 'changes', 'requests', 'daily']) {
+    const r = await k.call(`admin/export?kind=${kind}`, undefined, { cookie: boss });
+    assert.equal(r.status, 200, kind); assert.match(r.headers.get('content-type'), /text\/csv/); assert.match(r.headers.get('content-disposition'), new RegExp(`heartbeat-${kind}-`));
+    const body = await r.text(); assert.ok(body.split('\r\n')[0].length > 3, kind);
+    if (kind === 'requests') { assert.match(body, /'=HYPERLINK/); assert.doesNotMatch(body, /,=HYPERLINK/); }
+  }
+  assert.equal((await k.call('admin/export?kind=testers', undefined, { cookie: priyaCookie })).status, 404, 'Testers cannot export');
+  assert.equal((await k.call('admin/export?kind=nothing', undefined, { cookie: boss })).status, 404);
+  k.close();
+  console.log('access requests, total limit, change log and exports: ok');
+}

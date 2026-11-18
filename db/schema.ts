@@ -39,6 +39,17 @@ export const generations=sqliteTable("generations",{
   "usage":text("usage"),
   "created_at":integer("created_at").notNull()
 },t=>[]);
+export const hbAccessRequests=sqliteTable("hb_access_requests",{
+  "id":text("id").notNull().primaryKey(),
+  "email":text("email").notNull(),
+  "name":text("name").notNull().default(""),
+  "note":text("note").notNull().default(""),
+  "status":text("status").notNull().default("new"),
+  "created_at":integer("created_at").notNull(),
+  "handled_at":integer("handled_at")
+},t=>[index("hb_access_requests_email").on(t["email"]),
+index("hb_access_requests_status").on(t["status"],t["created_at"]),
+check("hb_access_requests_check_0",sql.raw("status IN ('new','invited','dismissed')"))]);
 export const hbActivity=sqliteTable("hb_activity",{
   "id":text("id").notNull().primaryKey(),
   "user_id":text("user_id"),
@@ -47,6 +58,15 @@ export const hbActivity=sqliteTable("hb_activity",{
   "detail":text("detail").notNull().default(""),
   "created_at":integer("created_at").notNull()
 },t=>[index("hb_activity_time").on(t["created_at"])]);
+export const hbAdminLog=sqliteTable("hb_admin_log",{
+  "id":text("id").notNull().primaryKey(),
+  "actor":text("actor").notNull(),
+  "target":text("target").notNull().default(""),
+  "action":text("action").notNull(),
+  "before":text("before").notNull().default(""),
+  "after":text("after").notNull().default(""),
+  "created_at":integer("created_at").notNull()
+},t=>[index("hb_admin_log_time").on(t["created_at"])]);
 export const hbArtworkOutbox=sqliteTable("hb_artwork_outbox",{
   "job_id":text("job_id").notNull().primaryKey(),
   "state":text("state").notNull().default("pending"),
@@ -218,9 +238,11 @@ export const hbInvites=sqliteTable("hb_invites",{
   "invited_by":text("invited_by").notNull(),
   "invited_at":integer("invited_at").notNull(),
   "rhythm_minutes":integer("rhythm_minutes"),
-  "daily_limit":integer("daily_limit")
+  "daily_limit":integer("daily_limit"),
+  "total_limit":integer("total_limit")
 },t=>[check("hb_invites_check_0",sql.raw("rhythm_minutes IS NULL OR rhythm_minutes BETWEEN 2 AND 1440")),
-check("hb_invites_check_1",sql.raw("daily_limit IS NULL OR daily_limit BETWEEN 1 AND 500"))]);
+check("hb_invites_check_1",sql.raw("daily_limit IS NULL OR daily_limit BETWEEN 1 AND 500")),
+check("hb_invites_check_2",sql.raw("total_limit IS NULL OR total_limit BETWEEN 1 AND 100000"))]);
 export const hbJobs=sqliteTable("hb_jobs",{
   "id":text("id").notNull().primaryKey(),
   "owner":text("owner").notNull(),
