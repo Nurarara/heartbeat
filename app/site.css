@@ -127,3 +127,4 @@
 .ps-request-done{max-width:640px;margin:0 auto;text-align:center;font-size:18px;padding:28px;border:1px solid #fc684b55;border-radius:18px;background:#fc684b10}
 .ps-request-error{grid-column:1/-1;color:#ff9b87;margin:0;font-size:14px}
 .ps-request-form .ps-label{color:#cfd0cc}
+.ps-nav-link{background:none;border:0;padding:0;font:inherit;color:#d9dadb;cursor:pointer}.ps-nav-link:hover{color:#fff}

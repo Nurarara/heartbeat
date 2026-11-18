@@ -43,10 +43,25 @@ function useReveal() {
   }, []);
 }
 
-function useSignedIn() {
+// One sign-in check per page load, shared by the nav, the hero and the help pages.
+let sessionCheck: Promise<boolean> | null = null;
+export function useSignedIn() {
   const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => { let on = true; fetch('/api/product/auth/session', { cache: 'no-store' }).then(r => r.json() as Promise<{ user?: unknown }>).then(d => { if (on) setSignedIn(!!d.user); }).catch(() => {}); return () => { on = false; }; }, []);
+  useEffect(() => {
+    let on = true;
+    sessionCheck ??= fetch('/api/product/auth/session', { cache: 'no-store' }).then(r => r.json() as Promise<{ user?: unknown }>).then(d => !!d.user).catch(() => false);
+    void sessionCheck.then(v => { if (on) setSignedIn(v); });
+    return () => { on = false; };
+  }, []);
   return signedIn;
+}
+/** Where "open my display" goes: the display when signed in, otherwise sign-in first, then the display. */
+export const displayHref = (signedIn: boolean) => signedIn ? '/display' : '/auth?mode=login&next=%2Fdisplay';
+const ACCOUNT_KEYS = ['heartbeat.ambient.v1', 'heartbeat.story.v1', 'heartbeat.creative.v1', 'heartbeat.ai-request.v1', 'heartbeat.account.owner'];
+async function logOut() {
+  try { await fetch('/api/product/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' }); } catch { /* Signing out still clears this browser below. */ }
+  try { ACCOUNT_KEYS.forEach(k => localStorage.removeItem(k)); } catch { /* Storage can be unavailable. */ }
+  location.assign('/');
 }
 
 export function SiteNav({ solid = false }: { solid?: boolean }) {
@@ -56,7 +71,7 @@ export function SiteNav({ solid = false }: { solid?: boolean }) {
     <a href="/" className="ps-brand" aria-label="Heartbeat home"><span className="ps-brand-dot" aria-hidden="true" />heartbeat</a>
     <nav aria-label="Main">
       <a href="/#how">How it works</a><a href="/download">Download</a><a href="/#faq">FAQ</a>
-      {signedIn ? <a className="ps-nav-cta" href="/display">Open my display <ArrowRight size={14} /></a> : <a className="ps-nav-cta" href="/auth">Sign in <ArrowRight size={14} /></a>}
+      {signedIn ? <><a href="/app">My studio</a><button type="button" className="ps-nav-link" onClick={() => void logOut()}>Log out</button><a className="ps-nav-cta" href="/display">Open my display <ArrowRight size={14} /></a></> : <a className="ps-nav-cta" href="/auth">Sign in <ArrowRight size={14} /></a>}
     </nav>
   </header>;
 }
@@ -80,6 +95,7 @@ const holdUntil = () => Date.now() + 20000;
 
 export function PublicSite() {
   useReveal();
+  const signedIn = useSignedIn();
   const [platform, setPlatform] = useState<Platform>('other');
   const [index, setIndex] = useState(0), [mood, setMood] = useState<MoodCard | null>(null), hold = useRef(0);
   useEffect(() => { const t = setTimeout(() => setPlatform(detectPlatform()), 0); return () => clearTimeout(t); }, []);
@@ -104,7 +120,7 @@ export function PublicSite() {
         <p className="ps-lede">Heartbeat paints a new original picture for the moment you’re in: your time, your weather, the sun and moon, and your mood. On your wallpaper, your screensaver and your lock screen.</p>
         <div className="ps-ctas">
           {primary ? <a className="ps-button" href={primary.href} download={platform !== 'iphone' ? true : undefined}>{platform === 'iphone' ? <Apple size={17} /> : <Download size={17} />}{primary.label}</a> : <a className="ps-button" href="/download"><Download size={17} />Get Heartbeat</a>}
-          <a className="ps-button ps-ghost" href="/auth">Sign in</a>
+          {signedIn ? <a className="ps-button ps-ghost" href="/display">Open my display</a> : <a className="ps-button ps-ghost" href="/auth">Sign in</a>}
         </div>
         <p className="ps-fine">{primary ? primary.note + ' · ' : ''}Free during the private test. <a href="#request">Request access</a> · <a href="/download">All devices</a></p>
       </div>
@@ -143,7 +159,7 @@ export function PublicSite() {
         <DeviceCard icon={<Apple size={22} />} name="Mac" what="Wallpaper, plus full-screen Heartbeat when your Mac is idle." href="/downloads/Heartbeat-mac.zip" cta="Download for Mac" current={platform === 'mac'} />
         <DeviceCard icon={<Smartphone size={22} />} name="Android" what="Lock screen picture, and a screensaver while charging." href="/downloads/Heartbeat.apk" cta="Download .apk" current={platform === 'android'} />
         <DeviceCard icon={<Tablet size={22} />} name="iPhone & iPad" what="A Home Screen app, and your lock screen picture through Shortcuts." href="/download#iphone" cta="How to set up" current={platform === 'iphone'} />
-        <DeviceCard icon={<Tv size={22} />} name="Any browser or TV" what="Open your display full-screen on any screen with a browser." href="/display" cta="Open display" current={false} />
+        <DeviceCard icon={<Tv size={22} />} name="Any browser or TV" what="Open your display full-screen on any screen with a browser." href={displayHref(signedIn)} cta="Open display" current={false} />
       </div>
       <p className="ps-fine ps-center ps-reveal">Step-by-step help for each device is on the <a href="/download">download page</a>.</p>
     </section>
@@ -157,7 +173,7 @@ export function PublicSite() {
 
     <section className="ps-final ps-reveal">
       <Sparkles size={22} /><h2>Let the day in. <em>Leave the noise outside.</em></h2>
-      <div className="ps-ctas ps-center"><a className="ps-button" href="/download"><Download size={17} />Get Heartbeat</a><a className="ps-button ps-ghost" href="/auth">Sign in</a></div>
+      <div className="ps-ctas ps-center"><a className="ps-button" href="/download"><Download size={17} />Get Heartbeat</a>{signedIn ? <a className="ps-button ps-ghost" href="/app">My studio</a> : <a className="ps-button ps-ghost" href="/auth">Sign in</a>}</div>
     </section>
     <SiteFooter />
   </div>;

@@ -1,13 +1,14 @@
 "use client";
 // Download and help, terms, and privacy: part of the public website (see public-site.tsx).
 import { Apple, Download, Monitor, Smartphone, Tablet, Tv } from 'lucide-react';
-import { SiteFooter, SiteNav } from './public-site';
+import { SiteFooter, SiteNav, displayHref, useSignedIn } from './public-site';
 
 function Page({ eyebrow, title, intro, children }: { eyebrow: string; title: React.ReactNode; intro?: React.ReactNode; children: React.ReactNode }) {
   return <div className="ps-site ps-page"><SiteNav solid /><main className="ps-doc"><p className="ps-eyebrow">{eyebrow}</p><h1>{title}</h1>{intro && <p className="ps-lede">{intro}</p>}{children}</main><SiteFooter /></div>;
 }
 
 export function DownloadPage() {
+  const signedIn = useSignedIn();
   return <Page eyebrow="DOWNLOAD AND HELP" title={<>Heartbeat on <em>every screen.</em></>} intro="Install it once, sign in with your email and the six-digit code, and Heartbeat takes care of the rest. During the private test you need an invite to sign in.">
     <nav className="ps-jump" aria-label="Devices"><a href="#windows"><Monitor size={15} />Windows</a><a href="#mac"><Apple size={15} />Mac</a><a href="#android"><Smartphone size={15} />Android</a><a href="#iphone"><Tablet size={15} />iPhone & iPad</a><a href="#web"><Tv size={15} />Browser & TV</a><a href="#using">Using Heartbeat</a></nav>
 
@@ -50,7 +51,7 @@ export function DownloadPage() {
 
     <section id="iphone" className="ps-guide">
       <div><h2><Tablet size={20} />iPhone & iPad</h2><p>A full-screen Home Screen app, and your lock screen picture through Apple’s Shortcuts app. No App Store needed.</p>
-        <a className="ps-button" href="/app?tab=desktop"><Apple size={16} />Open my studio</a></div>
+        <a className="ps-button" href={signedIn ? '/app?tab=desktop' : '/auth?mode=login&next=%2Fapp%3Ftab%3Ddesktop'}><Apple size={16} />Open my studio</a></div>
       <ol>
         <li><strong>Home Screen app:</strong> open <strong>app.heartbeatart.co.uk</strong> in Safari, sign in, tap <strong>Share → Add to Home Screen</strong>. Open it from your Home Screen for full-screen Heartbeat that keeps the screen on. Great on a stand or while charging.</li>
         <li><strong>Lock screen picture:</strong> in your studio, open <em>Room for your desktop</em> and tap <strong>Create my iPhone picture link</strong>, then copy the link.</li>
@@ -62,7 +63,7 @@ export function DownloadPage() {
 
     <section id="web" className="ps-guide">
       <div><h2><Tv size={20} />Any browser or TV</h2><p>Open your display on any screen with a web browser: a spare laptop, a tablet on a stand, a smart TV.</p>
-        <a className="ps-button ps-ghost" href="/display">Open my display</a></div>
+        <a className="ps-button ps-ghost" href={displayHref(signedIn)}>{signedIn ? 'Open my display' : 'Sign in and open my display'}</a></div>
       <ol><li>Sign in and open <strong>Display</strong>. Move the mouse (or tap) to show the controls: mood, pause, full screen and settings.</li><li>Press <strong>F</strong> for full screen and <strong>Space</strong> to pause.</li></ol>
     </section>
 

@@ -30,3 +30,9 @@
 .hp-iphone{margin:26px 0 8px;padding-top:22px;border-top:1px solid var(--hp-line)}.hp-iphone h3{font-size:18px!important;margin-bottom:8px!important}.hp-iphone p{color:var(--hp-muted);font-size:13px}.hp-iphone input{width:100%;margin:12px 0;padding:10px 12px;border-radius:8px;border:1px solid currentColor;background:transparent;color:inherit;opacity:.85;font:12px/1.4 ui-monospace,monospace}.hp-iphone div{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 
 .hp-device-note{display:block!important;font-size:12.5px!important;line-height:1.6;opacity:.75;margin:10px 0 0!important;max-width:640px}
+.hp-studio-moods{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 8px}
+.hp-studio-moods button{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;border:1px solid currentColor;border-color:color-mix(in srgb,currentColor 25%,transparent);background:transparent;color:inherit;font-size:12.5px;cursor:pointer;transition:background .2s,border-color .2s}
+.hp-studio-moods button i{width:8px;height:8px;border-radius:50%}
+.hp-studio-moods button[aria-pressed=true]{border-color:var(--hp-accent);background:color-mix(in srgb,var(--hp-accent) 14%,transparent);font-weight:600}
+.hp-studio-moods button:disabled{opacity:.6;cursor:wait}
+.hp-mood-note{font-size:12px!important;opacity:.7}.hp-small-link{font-size:12px!important}
