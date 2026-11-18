@@ -99,8 +99,15 @@ export async function codeLogin(request: Request, env: ProductEnv, input: Record
     catch { user = await database.prepare('SELECT * FROM hb_users WHERE email=?').bind(address).first<User>(); if (!user) throw new ProductError('Your account could not be created. Please try again.', 503); }
     await ensureDefaultWorld(env, user.id, now);
   } else if (!user.verified) {
-    // The code proves the address.
-    await database.prepare("UPDATE hb_users SET verified=1 WHERE id=? AND lifecycle='active'").bind(user.id).run(); user = { ...user, verified: 1 };
+    // The code proves the address. Anything set up before it was proven (a password someone else may have
+    // chosen, their sessions and devices) is removed, so only the address owner gets in.
+    await database.batch([
+      database.prepare("UPDATE hb_users SET verified=1,password_hash='code-only',credential_epoch=credential_epoch+1 WHERE id=? AND lifecycle='active'").bind(user.id),
+      database.prepare('DELETE FROM hb_sessions WHERE user_id=?').bind(user.id),
+      database.prepare('DELETE FROM hb_devices WHERE owner=?').bind(user.id),
+    ]);
+    user = await database.prepare('SELECT * FROM hb_users WHERE id=?').bind(user.id).first<User>();
+    if (!user) throw new ProductError('Your account could not be opened. Please try again.', 503);
   }
   if ((user.lifecycle ?? 'active') !== 'active') throw new ProductError('This account is being deleted.', 403);
   if (betaMode(env)) await grantBetaAllowance(env, user, now);
@@ -172,6 +179,8 @@ export async function adminRoute(request: Request, env: ProductEnv, auth: Auth, 
   if (path === 'admin/pace' && request.method === 'POST') {
     // Per-tester picture rhythm (minutes) and daily limit; empty means the default.
     const input = await readJSON(request, 1024), address = email(input.email);
+    const numeric = (v: unknown) => typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v));
+    if ((input.rhythmMinutes != null && input.rhythmMinutes !== '' && !numeric(input.rhythmMinutes)) || (input.dailyLimit != null && input.dailyLimit !== '' && !numeric(input.dailyLimit))) throw new ProductError('Use whole numbers.');
     const minutes = input.rhythmMinutes === null || input.rhythmMinutes === '' || input.rhythmMinutes === undefined ? null : Number(input.rhythmMinutes);
     const daily = input.dailyLimit === null || input.dailyLimit === '' || input.dailyLimit === undefined ? null : Number(input.dailyLimit);
     if (minutes !== null && (!Number.isInteger(minutes) || minutes < 2 || minutes > 1440)) throw new ProductError('Choose between 2 and 1440 minutes.');

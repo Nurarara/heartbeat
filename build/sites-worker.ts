@@ -5,6 +5,8 @@ import {assertConfiguration,assertSchema,operatorStudyAllowed} from '../lib/prod
 import type {ProductEnv} from '../lib/product/core';
 import {selfHostedRequest} from '../lib/product/self-hosted';
 import {ownerOnlyPage} from '../lib/product/owner-page';
+import {withSecurityHeaders} from '../lib/product/security-headers';
+import {routePath} from '../lib/product/route-path';
 import handler from "vinext/server/fetch-handler";
 export { HeartbeatWorkflow } from '../lib/product/workflow';
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -15,9 +17,10 @@ export default {
   async fetch(incoming: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
     const runtime=env as unknown as ProductEnv,request=selfHostedRequest(incoming,runtime);
     try{assertConfiguration(runtime);await assertSchema(runtime);}catch{return Response.json({error:'Application configuration needs operator attention.'},{status:503});}
-    const path=new URL(request.url).pathname;
+    // Guards compare the path the router will actually use: decoded, single slashes, no .rsc suffix.
+    const path=routePath(new URL(request.url).pathname);
     // The owner dashboard is refused on the server for everyone else: they get a plain 404, never the page.
-    if(path==='/admin'||path.startsWith('/admin/')){const denied=await ownerOnlyPage(request,runtime);if(denied)return denied;}
+    if(path==='/admin'||path.startsWith('/admin/')){const denied=await ownerOnlyPage(request,runtime);if(denied)return withSecurityHeaders(denied,request);}
     if((/^\/api\/(heartbeat|world|pulse|display|art)(?:\/|$)/.test(path)||['/local-study','/story','/pulse','/prototype'].includes(path)||path.startsWith('/prototype/'))&&!operatorStudyAllowed(request,runtime))return new Response('Not found',{status:404});
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
@@ -41,6 +44,6 @@ export default {
     const response=await runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
     if(new URL(request.url).pathname==='/api/product/webhook'&&response.ok)ctx.waitUntil(processBillingInbox(runtime));
     if(path==='/api/product/account/delete'&&request.method==='POST'&&response.ok)ctx.waitUntil(processAccountDeletions(runtime,Date.now(),2));
-    return response;
+    return withSecurityHeaders(response,request);
   },
 };

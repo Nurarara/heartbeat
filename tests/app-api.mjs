@@ -80,6 +80,13 @@ assert.equal(pic.status, 200); assert.equal(pic.headers.get('content-type'), 'im
 assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg?key=' + 'a'.repeat(64)))).status, 404);
 assert.equal((await app('state', undefined, linkKey)).status, 401, 'The picture link is not a device key');
 assert.equal((await app('mood', { mood: 'calm' }, linkKey)).status, 401);
+// …and not on the older desktop device routes either.
+const oldRoute = (path, method = 'GET') => f.service.handle(new Request(`https://heartbeat.example/api/product/${path}`, { method, headers: { Authorization: `Bearer ${linkKey}`, Origin: 'https://heartbeat.example', 'Content-Type': 'application/json' }, ...(method === 'POST' ? { body: '{}' } : {}) }));
+assert.equal((await oldRoute('device/status')).status, 401);
+assert.equal((await oldRoute('device/refresh', 'POST')).status, 401);
+assert.equal((await oldRoute(`device/art/${artId}`)).status, 401);
+// The link also works as a header (keeps the key out of logs).
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { headers: { Authorization: `Bearer ${linkKey}` } }))).status, 200);
 const second = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
 assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath))).status, 404, 'A new link turns the old one off');
 const listed = await (await f.call('devices', undefined, { cookie: web })).json();

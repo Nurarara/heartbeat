@@ -75,6 +75,9 @@ function Clock() {
   return <time className="ps-clock" aria-label="Your local time">{now ? now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'}</time>;
 }
 
+/** A chosen mood stays on the hero for 20 seconds before the slideshow resumes. */
+const holdUntil = () => Date.now() + 20000;
+
 export function PublicSite() {
   useReveal();
   const [platform, setPlatform] = useState<Platform>('other');
@@ -85,7 +88,7 @@ export function PublicSite() {
     const t = setInterval(() => { if (Date.now() < hold.current) return; setMood(null); setIndex(i => (i + 1) % ROTATION.length); }, 7000);
     return () => clearInterval(t);
   }, []);
-  const choose = (m: MoodCard) => { setMood(m); hold.current = Date.now() + 20000; };
+  const choose = (m: MoodCard) => { setMood(m); hold.current = holdUntil(); };
   const art = mood ? mood.art : ROTATION[index];
   const layers = Array.from(new Set([...ROTATION, ...MOOD_ART.map(m => m.art)]));
   const primary = platform === 'other' ? null : DOWNLOADS[platform];

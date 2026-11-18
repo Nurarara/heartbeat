@@ -65,7 +65,8 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
 
   // The private picture link (iPhone Shortcuts): the newest picture as a JPEG; asking counts as showing.
   if (route === 'picture.jpg' && request.method === 'GET') {
-    const key = new URL(request.url).searchParams.get('key') || '';
+    // The key can be sent as a header (preferred: stays out of logs) or in the address.
+    const key = request.headers.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] || new URL(request.url).searchParams.get('key') || '';
     if (!/^[a-f0-9]{64}$/.test(key)) throw new ProductError('This picture link is not valid.', 404);
     const link = await db(env).prepare("SELECT id,owner,credential_epoch FROM hb_devices WHERE secret_hash=? AND expires>? AND code_hash LIKE 'picture-link:%'").bind(await hash(key), now).first<{ id: string; owner: string; credential_epoch: number }>();
     if (!link) throw new ProductError('This picture link was turned off. Create a new one in your studio.', 404);

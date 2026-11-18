@@ -3,8 +3,8 @@
 The beta runs on your own computer (or any always-on machine). A free Cloudflare Tunnel connects
 https://app.heartbeatart.co.uk to it, so you need no paid Cloudflare plan. Testers sign in with a
 six-digit code sent to their email; only addresses you invite on your dashboard can get in (25
-places). Nobody pays. Each tester gets a new picture every 10 minutes while their display is open,
-up to 36 a day. Everyone together can spend at most $5 a day on pictures; after that, screens keep
+places). Nobody pays. Each tester gets a new picture every hour while a Heartbeat screen is showing,
+up to 30 a day; you can give any tester a faster rhythm or a different limit on the dashboard. Everyone together can spend at most $5 a day on pictures; after that, screens keep
 their last picture until midnight UTC.
 
 The computer must stay on and awake while people are testing. If it sleeps, the site is down.
@@ -58,7 +58,8 @@ HEARTBEAT_DIRECTOR_ESTIMATE_MICROS=2000
 ```
 
 `HEARTBEAT_DAILY_BUDGET_MICROS=5000000` is the $5 daily cap. Optional: `HEARTBEAT_BETA_SEATS` (25),
-`HEARTBEAT_BETA_CADENCE_MINUTES` (10), `HEARTBEAT_BETA_USER_DAILY` (36 pictures per tester per day).
+`HEARTBEAT_BETA_CADENCE_MINUTES` (default 60), `HEARTBEAT_BETA_USER_DAILY` (default 30 pictures per tester
+per day). Per-tester values are set on the dashboard instead (Testers → Picture pace).
 
 For `HEARTBEAT_OPERATOR_KEY`, you can make random text in PowerShell:
 `-join ((48..57)+(97..122) | Get-Random -Count 40 | % {[char]$_})`
@@ -67,23 +68,37 @@ For `HEARTBEAT_OPERATOR_KEY`, you can make random text in PowerShell:
 
 ```
 git pull
-pnpm install
 npm run beta:serve
 ```
 
-It builds the app, adds the new database tables (after backing up your local database) and starts.
+(`pnpm install` only when an error mentions a missing package.) The Windows, Mac and Android apps
+are already built and included in `public/downloads`, so testers can download them from the website
+straight away. It builds the app, adds the new database tables (after backing up your local database) and starts.
 When it prints **Ready**, open https://app.heartbeatart.co.uk/auth on your phone, enter your owner
 email, and type the code from your inbox. Then open **https://app.heartbeatart.co.uk/admin**: your
 dashboard. Invite testers there; they go to the same /auth address and sign in with their email.
 
 Next time, `npm run beta:serve nobuild` starts faster when the code hasn't changed.
 
+## Website and apps
+
+- **https://app.heartbeatart.co.uk** is the public website: what Heartbeat is, downloads for every
+  device (it suggests the right one), step-by-step help at `/download`, FAQ, terms and privacy.
+- **Windows, Mac, Android** apps, and **iPhone/iPad** through Add to Home Screen plus a lock-screen
+  picture link (studio → Room for your desktop). See [how-heartbeat-works.md](how-heartbeat-works.md).
+- The **Mac app** is built for free on GitHub's Mac computers whenever `clients/mac` changes
+  (`.github/workflows/mac.yml`), and the build is committed to `public/downloads` automatically.
+- The contact address on the website is `hello@heartbeatart.co.uk`: add it in Cloudflare →
+  Email → Routing rules (forward to your inbox) if it isn't there yet.
+
 ## What the dashboard shows
 
 Who is watching right now, testers joined, watch time (today, per day, by hour of day), average
 session length, pictures made, today's spend against the $5 cap, moods and devices used, every
 screen session, and a log of sign-ins, mood changes and invites. Watch time counts only while a
-display is open and visible. Removing a tester signs them out at once.
+display is open and visible. Removing a tester signs them out at once. **Picture pace:** in each
+tester's row, type minutes between pictures and a daily limit and press Save (empty = defaults:
+60 minutes, 30 a day). Only you can open `/admin`; for everyone else it doesn't exist.
 
 ## Good to know
 

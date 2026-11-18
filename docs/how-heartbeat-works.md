@@ -90,15 +90,15 @@ picture follows it. A picture already being made keeps the old mood.
 
 | Limit | Value | Where to change it |
 |---|---|---|
-| New picture per screen | every 10 minutes | `HEARTBEAT_BETA_CADENCE_MINUTES` |
-| Pictures per tester per day | 36 | `HEARTBEAT_BETA_USER_DAILY` |
+| New picture per screen | every 60 minutes (per tester on the dashboard) | `HEARTBEAT_BETA_CADENCE_MINUTES`, dashboard → Picture pace |
+| Pictures per tester per day | 30 (per tester on the dashboard) | `HEARTBEAT_BETA_USER_DAILY`, dashboard → Picture pace |
 | Spend for everyone per day | $5 (resets midnight UTC) | `HEARTBEAT_DAILY_BUDGET_MICROS` (5000000 = $5) |
 | Attempts for everyone per day | 200 | `HEARTBEAT_AI_DAILY_LIMIT` |
 | Testers | 25 | `HEARTBEAT_BETA_SEATS` |
 
 - The $5 cap is checked **before** every paid call, using an estimate of $0.04 per picture and
   $0.002 per director decision. When the next picture would go over, nothing is called.
-- A failed picture is never retried automatically in a loop; the screen waits 10 minutes.
+- A failed picture is never retried automatically in a loop; the screen waits for its next turn.
 - Pictures are only made while a screen is open and visible.
 
 ## What the dashboard records
@@ -181,6 +181,30 @@ with the email code it can be the lock screen picture and home screen wallpaper 
 30 minutes, at most one new picture an hour, only while the screen is on), Android's screensaver while
 charging, or a full-screen "frame" that keeps the screen on. Details: [clients/android/README.md](../clients/android/README.md).
 
+## The Mac app
+
+A menu-bar app (`clients/mac`, Swift, about 200 KB, Apple silicon and Intel, macOS 13+). First run asks:
+wallpaper, full-screen when idle, start at login. It keeps the newest picture as the wallpaper,
+shows Heartbeat full-screen after the chosen idle time (but not while a video or call keeps the
+display awake), keeps the display on while plugged in, and offers mood, pause, timing and studio from
+the menu bar. It is signed ad hoc (free) but not notarised, so macOS asks once (System Settings →
+Privacy & Security → Open Anyway). Built automatically on GitHub's free Mac runners.
+
+## iPhone and iPad
+
+Apple doesn't allow apps outside the App Store without a paid developer account, so Heartbeat uses
+two free, built-in routes: **Add to Home Screen** (the display opens full-screen and keeps the screen
+on), and a **private picture link** for a Shortcuts automation that sets the lock screen every hour.
+The link can only fetch the newest picture, is one per person, is rate limited, and is turned off by
+creating a new one or disconnecting it in the studio.
+
+## The website
+
+The app address opens the public website (`components/public-site.tsx`): animated home with real
+pictures and moods, downloads for every device, help (`/download`), FAQ, terms and privacy. The
+owner dashboard (`/admin`) is refused on the server for everyone but the owner. Every page and API
+reply carries security headers (no framing, no type sniffing, strict referrer, HTTPS only).
+
 ## Moving to paid hosting later
 
 When the test has proven the idea, the same code can run on Cloudflare's own servers (Workers Paid,
@@ -208,4 +232,7 @@ ready. The private-test switches (`HEARTBEAT_BETA`, `HEARTBEAT_SELF_HOSTED`) are
 | API for installed apps | `lib/product/app-api.ts`, [api-for-apps.md](api-for-apps.md) |
 | Windows app | `clients/windows/Heartbeat.cs`, `scripts/build-windows.mjs` |
 | Android app | `clients/android/`, `scripts/build-android.mjs` |
+| Mac app | `clients/mac/`, `.github/workflows/mac.yml` |
+| Website | `components/public-site.tsx`, `components/site-pages.tsx`, `app/site.css` |
+| Owner-only page guard, security headers | `lib/product/owner-page.ts`, `lib/product/security-headers.ts` |
 | Database changes | `drizzle/` (newest: `0015_beta.sql`) |

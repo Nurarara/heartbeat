@@ -164,3 +164,29 @@ console.log('private beta: ok');
   g.close();
   console.log('owner-only dashboard page: ok');
 }
+
+// Page guards see the path the router uses, so encoded or .rsc variants can't slip past.
+{
+  const { routePath } = await import('../lib/product/route-path.ts');
+  for (const raw of ['/admin', '/%61dmin', '//admin', '/admin.rsc', '/admin/', '/%61dmin.rsc']) assert.equal(routePath(raw), '/admin', raw);
+  assert.equal(routePath('/admin/x'), '/admin/x'); assert.equal(routePath('/'), '/'); assert.equal(routePath('/%E0%A4%A'), '/%E0%A4%A');
+  console.log('route path normalisation: ok');
+}
+
+// A password set before the address was proven (for example by someone else) stops working once the
+// real owner of the address signs in with a code; their sessions and devices are removed.
+{
+  const h = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: 'boss@example.test', HEARTBEAT_EMAIL_API_KEY: 'k', HEARTBEAT_EMAIL_FROM: 'H <h@example.test>' } });
+  const { passwordHash } = await import('../lib/product/auth.ts');
+  h.sqlite.prepare("INSERT INTO hb_users(id,email,password_hash,verified,created_at) VALUES ('squatter','boss@example.test',?,0,?)").run(await passwordHash('an attacker password'), h.now());
+  h.sqlite.prepare("INSERT INTO hb_sessions(hash,user_id,expires,credential_epoch,auth_method,authenticated_at) VALUES ('old-session','squatter',?,0,'password',?)").run(h.now() + 86400000, h.now());
+  await h.call('auth/code/send', { email: 'boss@example.test' });
+  const code = h.emails.at(-1).subject.slice(0, 6);
+  assert.equal((await h.call('auth/code/verify', { email: 'boss@example.test', code })).status, 200);
+  const row = h.sqlite.prepare("SELECT * FROM hb_users WHERE id='squatter'").get();
+  assert.equal(row.verified, 1); assert.equal(row.password_hash, 'code-only'); assert.equal(row.credential_epoch, 1);
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM hb_sessions WHERE hash='old-session'").get().n, 0);
+  assert.equal((await h.call('auth/login', { email: 'boss@example.test', password: 'an attacker password' })).status, 401);
+  h.close();
+  console.log('unproven password removed on code sign-in: ok');
+}
