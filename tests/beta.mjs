@@ -145,3 +145,22 @@ await assert.rejects(createWeatherAdapter({ HEARTBEAT_APP_MODE: 'production' }, 
 await assert.rejects(createWeatherAdapter({ HEARTBEAT_APP_MODE: 'production', HEARTBEAT_BETA: 'true' }, { fetcher: geo }).search('London'), /Commercial weather/);
 
 console.log('private beta: ok');
+
+// The dashboard page itself is refused on the server for everyone but the owner.
+{
+  const { ownerOnlyPage } = await import('../lib/product/owner-page.ts');
+  const g = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: 'boss@example.test', HEARTBEAT_EMAIL_API_KEY: 'k', HEARTBEAT_EMAIL_FROM: 'H <h@example.test>' } });
+  const page = cookie => new Request('https://heartbeat.example/admin', { headers: cookie ? { Cookie: cookie } : {} });
+  assert.equal((await ownerOnlyPage(page(), g.env, g.now())).status, 404);
+  await g.call('admin/invite', { email: 'friend@example.test' }, {});
+  const code = a => g.emails.filter(m => m.to[0] === a).at(-1).subject.slice(0, 6);
+  await g.call('auth/code/send', { email: 'boss@example.test' });
+  const boss = (await g.call('auth/code/verify', { email: 'boss@example.test', code: code('boss@example.test') })).headers.get('set-cookie').split(';')[0];
+  await g.call('admin/invite', { email: 'friend@example.test' }, { cookie: boss });
+  await g.call('auth/code/send', { email: 'friend@example.test' });
+  const friend = (await g.call('auth/code/verify', { email: 'friend@example.test', code: code('friend@example.test') })).headers.get('set-cookie').split(';')[0];
+  assert.equal((await ownerOnlyPage(page(friend), g.env, g.now())).status, 404, 'A signed-in tester gets 404');
+  assert.equal(await ownerOnlyPage(page(boss), g.env, g.now()), null, 'The owner gets the page');
+  g.close();
+  console.log('owner-only dashboard page: ok');
+}

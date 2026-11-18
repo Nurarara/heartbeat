@@ -4,6 +4,7 @@ import {processAccountDeletions} from '../lib/product/lifecycle';
 import {assertConfiguration,assertSchema,operatorStudyAllowed} from '../lib/product/configuration';
 import type {ProductEnv} from '../lib/product/core';
 import {selfHostedRequest} from '../lib/product/self-hosted';
+import {ownerOnlyPage} from '../lib/product/owner-page';
 import handler from "vinext/server/fetch-handler";
 export { HeartbeatWorkflow } from '../lib/product/workflow';
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -15,6 +16,8 @@ export default {
     const runtime=env as unknown as ProductEnv,request=selfHostedRequest(incoming,runtime);
     try{assertConfiguration(runtime);await assertSchema(runtime);}catch{return Response.json({error:'Application configuration needs operator attention.'},{status:503});}
     const path=new URL(request.url).pathname;
+    // The owner dashboard is refused on the server for everyone else: they get a plain 404, never the page.
+    if(path==='/admin'||path.startsWith('/admin/')){const denied=await ownerOnlyPage(request,runtime);if(denied)return denied;}
     // Private test: the app's home is the display (which sends signed-out visitors to sign-in).
     // The public landing page lives at heartbeatart.co.uk.
     if(path==='/'&&runtime.HEARTBEAT_BETA==='true'&&(request.method==='GET'||request.method==='HEAD'))return Response.redirect(new URL('/display',request.url).href,302);
