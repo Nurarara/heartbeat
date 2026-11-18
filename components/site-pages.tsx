@@ -64,14 +64,14 @@ export function DownloadPage() {
     <section id="web" className="ps-guide">
       <div><h2><Tv size={20} />Any browser or TV</h2><p>Open your display on any screen with a web browser: a spare laptop, a tablet on a stand, a smart TV.</p>
         <a className="ps-button ps-ghost" href={displayHref(signedIn)}>{signedIn ? 'Open my display' : 'Sign in and open my display'}</a></div>
-      <ol><li>Sign in and open <strong>Display</strong>. Move the mouse (or tap) to show the controls: mood, pause, full screen and settings.</li><li>Press <strong>F</strong> for full screen and <strong>Space</strong> to pause.</li></ol>
+      <ol><li>Sign in and open <strong>Display</strong>. Move the mouse (or tap) to show the controls: pause, full screen and settings. Change the mood in your studio.</li><li>Press <strong>F</strong> for full screen and <strong>Space</strong> to pause.</li></ol>
     </section>
 
     <section id="using" className="ps-guide ps-guide-wide">
       <div><h2>Using Heartbeat</h2></div>
       <ul className="ps-tips">
         <li><strong>New pictures:</strong> one an hour while a screen is showing Heartbeat. Pictures aren’t made while your devices sleep.</li>
-        <li><strong>Mood:</strong> change it on any device, or in your studio. The current picture stays; the next one follows the mood.</li>
+        <li><strong>Mood:</strong> change it in your studio, or from the Windows, Mac or Android app. The current picture stays; the next one follows the mood.</li>
         <li><strong>City:</strong> change it in your studio. Heartbeat starts a picture for the new city straight away.</li>
         <li><strong>Night:</strong> after sunset pictures get dim, then near-black, on every device.</li>
         <li><strong>Your collection:</strong> every picture made for you is in your studio; keep favourites there.</li>

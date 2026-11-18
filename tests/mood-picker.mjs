@@ -93,9 +93,10 @@ try {
   await act(async () => chips()[1].click()); assert.deepEqual(chosen, ['dreamy'], 'Disabled chips cannot change the mood');
   await act(async () => root.unmount());
 } finally { dom.window.close(); }
-// The display places the chips inside its auto-hiding controls, and the fade follows the mood.
-const display = await readFile('app/live-heartbeat.tsx', 'utf8'), css = await readFile('app/live-ambient.css', 'utf8');
-assert.match(display, /<footer className="hb-controls hb-chrome"[^>]*>\{customer&&<MoodPicker /, 'Chips live in the controls that appear on movement and fade when idle');
+// Mood is chosen in the studio (and the apps), not on the display; the display's fade still follows the mood.
+const display = await readFile('app/live-heartbeat.tsx', 'utf8'), css = await readFile('app/live-ambient.css', 'utf8'), studio = await readFile('components/customer-app.tsx', 'utf8');
+assert.doesNotMatch(display, /MoodPicker/, 'The display has no mood chips');
+assert.match(studio, /className="hp-studio-moods"[^]*MOOD_IDS\.map[^]*save\(withMood\(preferences,id\)\)/, 'The studio overview has the mood chips');
 assert.match(css, /\[data-quiet="true"\] \.hb-chrome \{ opacity: 0; pointer-events: none; \}/);
 assert.match(display, /fadeMs=\{/);
 
