@@ -9,7 +9,7 @@ import {recoverBilling,cancelPendingCheckout,processBillingInbox} from './billin
 import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
 import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
-import {appRoute} from './app-api.ts';
+import {appRoute,createPictureLink} from './app-api.ts';
 import {adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
@@ -94,6 +94,7 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
     return await revoke(request,env);
    }
    if(path==='presence'&&request.method==='POST')return await presence(request,env,user,now);
+   if(path==='devices/picture-link'&&request.method==='POST'){await rate(env,`picture-link-create:${user.id}`,now,10);const link=await createPictureLink(env,user,now);return json({...link,url:new URL(link.url,env.HEARTBEAT_APP_ORIGIN||request.url).href});}
    if(path.startsWith('admin/'))return await adminRoute(request,env,auth,path,now);
    if(path==='auth/resend'&&request.method==='POST') {await rate(env,`verify:${user.id}`,now,2);const input=await readJSON(request,4096);await sendToken(env,user,'verify',now,fetcher,typeof input.continuation==='string'?input.continuation:undefined);return json({message:'Verification email sent.'});}
    if(path==='preferences') {

@@ -71,6 +71,23 @@ await app('code/send', { email: 'sam@example.test' });
 const sam = await (await app('code/verify', { email: 'sam@example.test', code: codeFor('sam@example.test'), platform: 'windows', deviceName: 'Sam' })).json();
 assert.equal((await app(`art/${artId}`, undefined, sam.token)).status, 404);
 
+// iPhone picture link: created on the website, returns the newest picture, and can do nothing else.
+const created = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
+assert.match(created.url, /\/api\/product\/app\/picture\.jpg\?key=[a-f0-9]{64}$/);
+const linkPath = new URL(created.url).pathname + new URL(created.url).search, linkKey = new URL(created.url).searchParams.get('key');
+const pic = await f.service.handle(new Request('https://heartbeat.example' + linkPath));
+assert.equal(pic.status, 200); assert.equal(pic.headers.get('content-type'), 'image/jpeg'); assert.equal((await pic.arrayBuffer()).byteLength, 6);
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg?key=' + 'a'.repeat(64)))).status, 404);
+assert.equal((await app('state', undefined, linkKey)).status, 401, 'The picture link is not a device key');
+assert.equal((await app('mood', { mood: 'calm' }, linkKey)).status, 401);
+const second = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
+assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath))).status, 404, 'A new link turns the old one off');
+const listed = await (await f.call('devices', undefined, { cookie: web })).json();
+const linkDevice = listed.devices.find(d => d.name === 'iPhone & iPad · Shortcuts link');
+assert.ok(linkDevice);
+await f.call('device/revoke', { id: linkDevice.id }, { cookie: web });
+assert.equal((await f.service.handle(new Request(second.url.replace(/^https?:\/\/[^/]+/, 'https://heartbeat.example')))).status, 404, 'Disconnecting turns it off');
+
 // Mood from the app is saved to the account and seen by the website.
 assert.equal((await app('mood', { mood: 'romantic' }, token)).status, 200);
 assert.equal((await app('mood', { mood: 'angry' }, token)).status, 400);
