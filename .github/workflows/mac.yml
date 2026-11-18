@@ -1,0 +1,28 @@
+name: Mac app
+# Builds the Mac app for free on GitHub's macOS runners and commits the zip to public/downloads
+# on the same branch, so `git pull` + `npm run beta:serve` serves it.
+on:
+  push:
+    paths: ['clients/mac/**', '.github/workflows/mac.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, sign (ad hoc) and self-test
+        run: clients/mac/build.sh
+      - name: Publish into public/downloads on this branch
+        run: |
+          cp clients/mac/dist/Heartbeat-mac.zip clients/mac/dist/mac.json public/downloads/
+          git config user.name "heartbeat-build"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/downloads/Heartbeat-mac.zip public/downloads/mac.json
+          git commit -m "Mac app build for ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3; do git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 5; done

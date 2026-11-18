@@ -51,5 +51,3 @@ next-env.d.ts
 .dev.vars*
 !.env.example
 
-# Built Windows app (npm run windows:build); served by the self-hosted beta, never committed.
-public/downloads/
