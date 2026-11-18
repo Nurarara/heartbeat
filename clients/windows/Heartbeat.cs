@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.4.0";
+ public const string Version = "1.4.1";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -114,6 +114,8 @@ class Settings {
  public bool Wallpaper = true;
  public bool Screensaver = true;
  public bool LockFolder = true;
+ public bool SavedBackgroundType;
+ public string PreviousBackgroundType = "";
  public string LockFolderId = "";
  public string PreviousWallpaper, WallpaperId = "";
  public bool SavedWallpaper;
@@ -315,10 +317,21 @@ static class Wallpaper {
   string a = Path.Combine(App.DataDir, "wallpaper-a.jpg"), b = Path.Combine(App.DataDir, "wallpaper-b.jpg");
   string target = File.Exists(a) && (!File.Exists(b) || File.GetLastWriteTimeUtc(a) > File.GetLastWriteTimeUtc(b)) ? b : a;
   File.Copy(App.PicturePath, target, true); File.SetLastWriteTimeUtc(target, DateTime.UtcNow);
+  // Windows Spotlight (and slideshows) replace the wallpaper by themselves: switch the background to "Picture".
+  try {
+   using (var w = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers")) {
+    if (!settings.SavedBackgroundType) { settings.PreviousBackgroundType = Convert.ToString(w.GetValue("BackgroundType", "")); settings.SavedBackgroundType = true; }
+    w.SetValue("BackgroundType", 0, RegistryValueKind.DWord);
+   }
+  } catch { }
   Native.SystemParametersInfo(Native.SetDeskWallpaper, 0, target, Native.UpdateIni | Native.SendChange);
   settings.WallpaperId = App.Str(Cache.Info(), "id"); settings.Save();
  }
  public static void Restore(Settings settings) {
+  try {
+   if (settings.SavedBackgroundType && settings.PreviousBackgroundType != "") using (var w = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers")) w.SetValue("BackgroundType", int.Parse(settings.PreviousBackgroundType), RegistryValueKind.DWord);
+   settings.SavedBackgroundType = false;
+  } catch { }
   if (!settings.SavedWallpaper) return;
   string previous = settings.PreviousWallpaper ?? "";
   if (previous.IndexOf(@"\Heartbeat\", StringComparison.OrdinalIgnoreCase) >= 0 || (previous != "" && !File.Exists(previous))) previous = "";
@@ -543,6 +556,7 @@ class TrayContext : ApplicationContext {
   var m = icon.ContextMenuStrip; m.Items.Clear();
   bool signedIn = Settings.Token() != "";
   var info = Cache.Info();
+  m.Items.Add(new ToolStripMenuItem("Heartbeat " + App.Version) { Enabled = false });
   m.Items.Add(new ToolStripMenuItem(signedIn ? "Heartbeat · " + (settings.Email != "" ? settings.Email : App.Str(info, "email")) : "Heartbeat · not signed in") { Enabled = false });
   m.Items.Add(new ToolStripSeparator());
   if (!signedIn) { m.Items.Add("Sign in…", null, (s, e) => SignIn()); }
