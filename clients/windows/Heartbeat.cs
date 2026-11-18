@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.3.0";
+ public const string Version = "1.4.0";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -113,6 +113,8 @@ class Settings {
  public bool KeepScreenOn = true;
  public bool Wallpaper = true;
  public bool Screensaver = true;
+ public bool LockFolder = true;
+ public string LockFolderId = "";
  public string PreviousWallpaper, WallpaperId = "";
  public bool SavedWallpaper;
  public long LastWallpaperRequest;
@@ -276,6 +278,28 @@ static class Native {
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern int GetShortPathName(string longPath, StringBuilder shortPath, int size);
  public static string ShortPath(string path) { var sb = new StringBuilder(260); int n = GetShortPathName(path, sb, sb.Capacity); return n > 0 && n < sb.Capacity ? sb.ToString() : path; }
+}
+
+/// The lock screen (Windows + L): Windows can't be told the picture directly, but it can show a slideshow
+/// from a folder. Heartbeat keeps its newest pictures in Pictures\Heartbeat for that slideshow.
+static class LockFolder {
+ public static string Path { get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Heartbeat"); } }
+ public static void Update(Settings settings) {
+  string id = App.Str(Cache.Info(), "id");
+  if (!settings.LockFolder || id == "" || id == settings.LockFolderId || !File.Exists(App.PicturePath)) return;
+  Directory.CreateDirectory(Path);
+  // Keep the three newest, so the slideshow always shows something recent.
+  File.Copy(App.PicturePath, System.IO.Path.Combine(Path, "heartbeat-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".jpg"), true);
+  foreach (var old in new DirectoryInfo(Path).GetFiles("heartbeat-*.jpg").OrderByDescending(f => f.Name).Skip(3)) { try { old.Delete(); } catch { } }
+  settings.LockFolderId = id; settings.Save();
+ }
+ /// Opens the lock screen settings and the folder, with what to choose.
+ public static void SetUp(Settings settings) {
+  settings.LockFolder = true; settings.LockFolderId = ""; Update(settings);
+  MessageBox.Show("To show Heartbeat when you press Windows + L:\n\n1. In the Settings window that opens, under \"Personalise your lock screen\", choose Slideshow.\n2. Remove any other albums, then choose \"Browse\" and pick the folder:\n   " + Path + "\n3. Optional: turn off \"Get fun facts, tips and more\".\n\nHeartbeat keeps its newest pictures in that folder.", "Heartbeat on your lock screen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+  try { Process.Start(new ProcessStartInfo("ms-settings:lockscreen") { UseShellExecute = true }); } catch { }
+  try { Process.Start(new ProcessStartInfo("explorer.exe", "\"" + Path + "\"") { UseShellExecute = true }); } catch { }
+ }
 }
 
 /// The desktop wallpaper: the newest picture, filling every screen.
@@ -483,6 +507,7 @@ class TrayContext : ApplicationContext {
     if (App.Truthy(state, "making")) settings.LastWallpaperRequest = DateTime.UtcNow.Ticks - TimeSpan.FromMinutes(Math.Max(1, (App.OnMains ? settings.WallpaperMinutes : settings.WallpaperMinutes * 2) - 1)).Ticks;
    }
    // A new picture (from the wallpaper or the screensaver) becomes the wallpaper.
+   try { LockFolder.Update(settings); } catch { }
    if (settings.Wallpaper && App.Str(Cache.Info(), "id") != "" && App.Str(Cache.Info(), "id") != settings.WallpaperId) Wallpaper.Apply(settings);
   }
   catch (ApiError e) { if (e.Status == 401) { Say("Please sign in to Heartbeat again."); SignIn(); } }
@@ -537,6 +562,7 @@ class TrayContext : ApplicationContext {
    var wall = new ToolStripMenuItem("Use as wallpaper") { Checked = settings.Wallpaper };
    wall.Click += (s, e) => { try { settings.Wallpaper = !settings.Wallpaper; settings.Save(); if (settings.Wallpaper) { Wallpaper.Apply(settings); Tick(false); } else Wallpaper.Restore(settings); } catch (Exception x) { Say(x.Message); } };
    m.Items.Add(wall);
+   m.Items.Add("Show on my lock screen (Windows + L)…", null, (s, e) => { try { LockFolder.SetUp(settings); } catch (Exception x) { Say(x.Message); } });
    var saverItem = new ToolStripMenuItem("Use as screensaver") { Checked = settings.Screensaver };
    saverItem.Click += (s, e) => { try { settings.Screensaver = !settings.Screensaver; if (settings.Screensaver) Installer.SetScreensaver(settings, settings.IdleMinutes); else Installer.RestoreScreensaver(settings); settings.Save(); Say(settings.Screensaver ? "Heartbeat is your screensaver again." : "Your previous screensaver is back."); } catch (Exception x) { Say(x.Message); } };
    m.Items.Add(saverItem);

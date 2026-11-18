@@ -20,6 +20,7 @@ export function DownloadPage() {
         <li>Choose what Heartbeat should do: <strong>wallpaper</strong>, <strong>screensaver</strong>, or both. It installs just for you; no admin rights needed.</li>
         <li>Sign in with your email and the code. Heartbeat shows straight away; move the mouse to close it.</li>
         <li>Right-click the <strong>Heartbeat icon</strong> by the clock to change the mood, pause, choose when the screensaver starts, or uninstall.</li>
+        <li><strong>Lock screen (Windows + L):</strong> right-click the icon → <strong>Show on my lock screen</strong>. It opens the lock screen settings: choose <em>Slideshow</em> and pick the <strong>Pictures › Heartbeat</strong> folder, where Heartbeat keeps its newest pictures.</li>
       </ol>
     </section>
 

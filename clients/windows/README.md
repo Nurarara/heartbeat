@@ -38,6 +38,9 @@ The second rebuilds and starts the site so the download is served. Neither file 
 - **Icon by the clock**: mood, show Heartbeat now, use as wallpaper, pause new pictures for an hour, when the
   screensaver starts (2–30 minutes), keep the screen on while plugged in, open the studio, check
   for updates, sign out, uninstall, quit.
+- **Lock screen** (Windows + L): Windows doesn't let apps set it directly, so Heartbeat keeps its three
+  newest pictures in `Pictures\Heartbeat`. Menu → *Show on my lock screen…* opens the lock screen
+  settings with instructions to choose *Slideshow* and that folder.
 - **Background**: every 15 minutes (30 on battery) it quietly fetches the latest picture so the
   screensaver opens instantly. It never makes pictures in the background.
 - **Updates**: about once a day it reads `/downloads/windows.json`; a newer, checksum-verified
