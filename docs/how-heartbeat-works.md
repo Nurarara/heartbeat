@@ -32,7 +32,7 @@ the picture, stores it, and sends it to the screen.
 | **Heartbeat app** (website + server) | Your laptop, started with `npm run beta:serve` | Everything: sign-in, displays, picture jobs, dashboard | Free |
 | **Cloudflare Tunnel** | Windows service on your laptop + Cloudflare | Connects `app.heartbeatart.co.uk` to `localhost:8787` without opening your home network | Free |
 | **Domain** `heartbeatart.co.uk` | Cloudflare | The address people type; DNS and email forwarding | Yearly domain fee |
-| **Landing page** `heartbeatart.co.uk` | Cloudflare Pages | The public early-access site (separate from the app) | Free |
+| **Company site** `heartbeatart.co.uk` | Cloudflare Pages | The living hero, journal, principles and Labs (static, separate from the app); Make it yours goes to early access | Free |
 | **Database and pictures** | `.wrangler/state` folder on your laptop | Accounts, invites, pictures, watch time, spend | Free |
 | **Director** (Llama 3.3 70B) | Cloudflare Workers AI | Reads time, weather, sky, mood and ingredient words; writes the scene and the image prompt | About $0.002 a picture |
 | **Painter** (FLUX.2-pro) | Microsoft Azure AI Foundry | Paints the picture (about 15 seconds) | About $0.04 a picture, paid by Azure credits |

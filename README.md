@@ -107,11 +107,19 @@ npm run live:test count=3 every=2 mood=dreamy painter=azure
 
 The account path uses it when `HEARTBEAT_IMAGE_PROVIDER=azure` (`lib/ai/azure-flux.ts`). It sends one request per picture, never retries a paid call by itself, sizes the picture to the screen shape and applies the same night brightness checks as Kie.
 
-In darkness only dark palettes are drawn and the image prompt opens with the darkness instruction. If a picture still comes back too bright, the live test dims it and keeps it instead of discarding a paid picture (`dim=off` restores the strict rejection; the account path still rejects). Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
+In darkness only dark palettes are drawn and the image prompt opens with the darkness instruction. If a picture still comes back too bright, the live test dims it and keeps it instead of discarding a paid picture (`dim=off` restores the strict rejection; the account path dims too when `HEARTBEAT_DIM_TOO_BRIGHT=true`, as in the private test). Open the printed address, then move the mouse to change the mood. A mood chosen while a picture is on screen applies to the next picture that has not started preparing. `npm run test:creative` covers these parts with mocked providers; real-model behaviour (how well the director honours the words and moods, and how often brightness limits reject a picture) still needs live qualification.
 
-## The public early-access site
+## The company site (heartbeatart.co.uk)
 
-`npm run site:export` builds the landing site for heartbeatart.co.uk into `outputs/heartbeat-site` for free hosting (Cloudflare Pages): a landing page and the prepared demo. **Make it yours** goes to the waitlist form on https://app.heartbeatart.co.uk/#request, which saves each sign-up on the owner dashboard (Access requests) and emails the owner. `npm run site:preview` serves it locally with the same security headers. It has no accounts, payments or AI calls, makes no outbound requests and collects nothing itself.
+`npm run site:export` builds the company site into `outputs/heartbeat-site` for free hosting (Cloudflare Pages): the
+living hero (rotating paintings, **Make it yours** to early access, **Watch the demo**), the journal of dated notes,
+principles and releases, Labs, and the prepared demo. Every page is pre-rendered to HTML and then made interactive;
+there is a light and dark switch (it follows the system until someone chooses). `npm run site:preview` serves it
+locally with the same security headers. It has no accounts, payments or AI calls, makes no outbound requests and
+collects nothing.
+
+The words live in `lib/company-content.ts`. Each note must describe what Heartbeat really does today; to add one, add
+an entry there (slug, title, summary, category, date, body), run `npm run site:export`, and upload the folder.
 
 ## Why old pictures could remain
 

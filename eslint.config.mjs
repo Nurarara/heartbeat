@@ -23,6 +23,11 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    // The company site (heartbeatart.co.uk) is a static export, not a Next app, so it uses plain links.
+    files: ["components/company-site*.tsx"],
+    rules: { "@next/next/no-html-link-for-pages": "off" },
+  },
 ]);
 
 export default eslintConfig;
