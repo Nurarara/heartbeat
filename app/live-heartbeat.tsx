@@ -116,6 +116,7 @@ function useOutdoorContext(place: Place | undefined, onClockOffset: (offset: num
   return { context: reading?.key === key ? reading.context : null, failed, loading, refresh: () => refreshRef.current() };
 }
 
+const ACCOUNT_MIN_HOLD = 30000;
 export default function LiveHeartbeat({customer = false, initialPreferences, initialMemory, initialPreferencesVersion=0,initialSurface}:{customer?:boolean;initialPreferences?:AmbientPreferences;initialMemory?:StoryMemory|null;initialPreferencesVersion?:number;initialSurface?:ScreenIdentity} = {}) {
   const [preferences, setPreferences] = useState<AmbientPreferences | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -167,7 +168,9 @@ export default function LiveHeartbeat({customer = false, initialPreferences, ini
   const usable = usableContext(outdoors.context, now);
   const storageFailure = useCallback(() => setStorageAvailable(false), []);
   const [rhythm, setRhythm] = useState<number | undefined>(undefined);
-  const director = useAmbientDirector(preferences, outdoors.context, now, paused, storageFailure, initialMemory, customer ? rhythm : undefined);
+  // Accounts: each picture stays at least 30 seconds; after that the server's pace (counted from when the last picture
+  // was started) decides when the next one is painted, so the display never adds its own wait on top.
+  const director = useAmbientDirector(preferences, outdoors.context, now, paused, storageFailure, initialMemory, customer ? Math.min(rhythm ?? ACCOUNT_MIN_HOLD, ACCOUNT_MIN_HOLD) : undefined);
   const [openingDirection] = useState(() => planMoment(LONDON, null, Date.now(), null, 731921).direction);
   const screenReady=useScreenProfile(customer&&!!preferences,initialSurface);
   usePresence(customer&&!!preferences,parseMood(preferences?.mood));

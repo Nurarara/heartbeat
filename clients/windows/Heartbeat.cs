@@ -23,7 +23,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.4.1";
+ public const string Version = "1.4.2";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }

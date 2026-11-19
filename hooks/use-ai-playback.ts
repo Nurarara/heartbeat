@@ -12,6 +12,7 @@ function savedRequest(key:string|undefined):Recovery|null {
 }
 type Inputs = { base: CreativeDirection | null; memory: StoryMemory | null; preferences: AmbientPreferences | null; at: number; paused: boolean; visible: boolean; accept: (direction: CreativeDirection, expectedId: string) => boolean; reject: (id: string) => void; localCanDisplay: (direction: CreativeDirection) => boolean };
 
+const DEFAULT_RHYTHM = 600000;
 export function useAIPlayback(inputs: Inputs, customer = false) {
   const lifetime=useRef({active:false,controller:new AbortController()});
   useEffect(()=>{const scope={active:true,controller:new AbortController()};lifetime.current=scope;return()=>{scope.active=false;scope.controller.abort();};},[]);
@@ -25,7 +26,9 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
   // A new city never waits for the previous city's next-picture time.
   const lastLocation = useRef(inputs.base?.locationKey);
   useEffect(() => { const key = inputs.base?.locationKey; if (!key || key === lastLocation.current) return; const first = lastLocation.current === undefined; lastLocation.current = key; if (!first) queueMicrotask(() => setNextAt(0)); }, [inputs.base?.locationKey]);
-  const rhythm = useRef(600000);
+  const rhythm = useRef(DEFAULT_RHYTHM), knownPace = useRef(0);
+  // How long to wait before trying again after something went wrong: the account's pace, between 1 and 10 minutes.
+  const retryDelay = () => Math.min(600000, Math.max(60000, rhythm.current));
   const latest = useRef(inputs), inFlight = useRef(false), attempted = useRef({ id: '', at: 0 }), acked = useRef(new Set<string>());
   useLayoutEffect(() => { latest.current = inputs; }, [inputs]);
   const refresh = useCallback(async () => {
@@ -35,9 +38,15 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
       if (!response.ok) throw new Error('AI setup/storage needs checking.');
       const status = await response.json() as AIStatus;
       if (typeof status.configured !== 'boolean' || typeof status.authorized !== 'boolean') throw new Error('Invalid status');
-      if(scope.active){setConnection(status); if (status.cadence && status.cadence > 0) rhythm.current = status.cadence; setNextAt(value => Math.max(value, status.nextAt || 0));}
+      if(scope.active){
+        setConnection(status);
+        // A changed account pace (set on the owner's dashboard) applies straight away: the server's next time wins.
+        const paceChanged = customer && !!status.cadence && status.cadence > 0 && knownPace.current > 0 && status.cadence !== knownPace.current;
+        if (status.cadence && status.cadence > 0) rhythm.current = knownPace.current = status.cadence;
+        setNextAt(value => paceChanged ? status.nextAt || 0 : Math.max(value, status.nextAt || 0));
+      }
     } catch { if(scope.active)setConnection({ ...OFF, reason: 'AI connection is unavailable. Free artwork is available.' }); }
-  }, []);
+  }, [customer]);
   useEffect(() => {
     void refresh();
     const resume = () => { if (!document.hidden) void refresh(); };
@@ -94,7 +103,10 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
           if (response.status === 404 || response.status === 401) clearRecovery();
           throw new Error(result.error || 'AI preparation is unavailable.');
         }
-        setNextAt(Math.max(latest.current.at + (result.status === 'pending' ? customer ? 5000 : 60000 : rhythm.current), result.nextAt || 0));
+        // Accounts: the server keeps the pace, counted from when each picture was started, so a 2-minute pace means a
+        // new picture every 2 minutes rather than 2 minutes after the last one finished painting.
+        setNextAt(result.status === 'pending' ? Math.max(latest.current.at + (customer ? 5000 : 60000), result.nextAt || 0)
+          : customer && result.nextAt ? result.nextAt : Math.max(latest.current.at + rhythm.current, result.nextAt || 0));
         if(result.status==='pending')setRecoveryAt(latest.current.at+(customer?Math.max(5000,Math.min(60000,(result as AIResult & {retryAfter?:number}).retryAfter! *1000||5000))+Math.floor(Math.random()*1500):60000));
         if (result.status === 'ready' && result.candidate) {
           const candidate = result.candidate, current = latest.current;
@@ -114,8 +126,8 @@ export function useAIPlayback(inputs: Inputs, customer = false) {
         // Never reissue a possibly charged POST. Recovery polls the same request ID.
         if (received) clearRecovery();
         else attempted.current = { id: '', at: 0 };
-        setRecoveryAt(latest.current.at+600000);
-        setMessage(error instanceof Error ? error.message : 'The current artwork is kept.'); setNextAt(latest.current.at + 600000);
+        setRecoveryAt(latest.current.at+retryDelay());
+        setMessage(error instanceof Error ? error.message : 'The current artwork is kept.'); setNextAt(latest.current.at + retryDelay());
       } finally { if(scope.active){inFlight.current = false; setBusy(false); void refresh();} }
     }
     void prepare();

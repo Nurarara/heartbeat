@@ -25,7 +25,7 @@
     "test:creative": "node --experimental-strip-types tests/creative.mjs && node --experimental-strip-types tests/cloudflare-provider.mjs && node --experimental-strip-types tests/kie-provider.mjs && node --experimental-strip-types tests/azure-flux.mjs && node --experimental-strip-types tests/kie-jobs.mjs && node --experimental-strip-types tests/sky.mjs && node --experimental-strip-types tests/ingredients.mjs && node --experimental-strip-types tests/mood-picker.mjs",
     "test:soak": "node --experimental-strip-types tests/ambient-soak.mjs",
     "test:live": "node tests/live-server.mjs",
-    "test:ambient": "node --experimental-strip-types tests/ambient.mjs && node --experimental-strip-types tests/context.mjs && node --experimental-strip-types tests/ambient-director.mjs && node tests/live-heartbeat.mjs && node tests/ambient-playback.mjs",
+    "test:ambient": "node --experimental-strip-types tests/ambient.mjs && node --experimental-strip-types tests/context.mjs && node --experimental-strip-types tests/ambient-director.mjs && node tests/live-heartbeat.mjs && node tests/ambient-playback.mjs && node --experimental-strip-types tests/account-pace.mjs",
     "prototype": "node scripts/preview-prototype.mjs",
     "prototype:export": "node scripts/export-prototype.mjs",
     "test:prototype": "node tests/prototype.mjs",

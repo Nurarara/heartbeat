@@ -105,6 +105,9 @@ assert.equal(overview.testers.find(t => t.email === OWNER).note, 'You (owner)');
 
 // The per-tester daily limit stops new pictures until tomorrow.
 const samUser = f.sqlite.prepare('SELECT * FROM hb_users WHERE email=?').get('sam@example.test');
+// Failed, cancelled and held attempts don't use up the day.
+for (const status of ['failed', 'canceled', 'held']) f.sqlite.prepare("INSERT INTO hb_jobs(id,owner,request_id,input,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(crypto.randomUUID(), samUser.id, crypto.randomUUID(), '{}', status, f.now(), f.now());
+assert.equal((await accessFor({ user: samUser, expires: f.now() + 1000 }, f.env, f.now())).eligible, true, 'Only pictures made count toward the daily limit');
 for (let i = 0; i < 2; i++) f.sqlite.prepare("INSERT INTO hb_jobs(id,owner,request_id,input,status,created_at,updated_at) VALUES (?,?,?,?,'done',?,?)").run(crypto.randomUUID(), samUser.id, crypto.randomUUID(), '{}', f.now(), f.now());
 const limited = await accessFor({ user: samUser, expires: f.now() + 1000 }, f.env, f.now());
 assert.equal(limited.eligible, false); assert.match(limited.reason, /tomorrow/);

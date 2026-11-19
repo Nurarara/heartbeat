@@ -17,7 +17,11 @@ if(process.platform==='win32'){
  if(!existsSync(csc))throw new Error('The .NET Framework 4 C# compiler was not found. It ships with Windows 10 and 11; check Windows Features → .NET Framework 4.8.');
  result=spawnSync(csc,['/nologo','/target:winexe','/platform:anycpu','/optimize+',`/out:${path.resolve(exe)}`,...refs.map(r=>`/reference:${r}`),path.resolve(source)],{encoding:'utf8',windowsHide:true});
 }else{
- result=spawnSync('mcs',['-langversion:5','-target:winexe','-optimize+',`-out:${exe}`,...refs.map(r=>`-r:${r}`),source],{encoding:'utf8'});
+ // Compile against the .NET Framework 4.8 reference assemblies, never Mono's own library: Mono has extra overloads
+ // (for example String.TrimEnd(char)) that Windows doesn't, and an app bound to them crashes on Windows.
+ const api='/usr/lib/mono/4.8-api';
+ if(!existsSync(path.join(api,'mscorlib.dll')))throw new Error('Install Mono with the .NET 4.8 reference assemblies (mono-devel), or build on Windows.');
+ result=spawnSync('mcs',['-langversion:5','-target:winexe','-optimize+','-nostdlib',`-r:${path.join(api,'mscorlib.dll')}`,`-out:${exe}`,...refs.map(r=>`-r:${path.join(api,r)}`),source],{encoding:'utf8'});
  if(result.error)throw new Error('Build on Windows (or install Mono for a check build).');
 }
 if(result.status!==0){process.stderr.write(result.stdout+result.stderr);process.exit(1);}

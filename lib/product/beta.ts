@@ -126,7 +126,8 @@ export async function betaBlock(env: ProductEnv, user: Pick<User, 'id' | 'email'
   if (!betaMode(env)) return null;
   if (!await invited(env, user.email)) return 'This account is no longer on the test invite list.';
   const pace = await testerPace(env, user.email);
-  const counts = await db(env).prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END) AS today FROM hb_jobs WHERE owner=?').bind(dayStart(now), user.id).first<{ total: number; today: number | null }>();
+  // Pictures made or being made count; failed, cancelled and held attempts don't use up a tester's pictures.
+  const counts = await db(env).prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END) AS today FROM hb_jobs WHERE owner=? AND status NOT IN ('failed','canceled','held')").bind(dayStart(now), user.id).first<{ total: number; today: number | null }>();
   if (pace.total !== null && (counts?.total || 0) >= pace.total) return 'You’ve had all the pictures for this test. Your screen keeps showing your latest one.';
   if ((counts?.today || 0) >= pace.daily) return 'That’s all the fresh pictures for today. Your screen keeps showing them, and new ones start again tomorrow.';
   return null;
