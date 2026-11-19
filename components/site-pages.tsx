@@ -9,7 +9,7 @@ function Page({ eyebrow, title, intro, children }: { eyebrow: string; title: Rea
 
 export function DownloadPage() {
   const signedIn = useSignedIn();
-  return <Page eyebrow="DOWNLOAD AND HELP" title={<>Heartbeat on <em>every screen.</em></>} intro="Install it once, sign in with your email and the six-digit code, and Heartbeat takes care of the rest. During the private test you need an invite to sign in.">
+  return <Page eyebrow="DOWNLOAD AND HELP" title={<>Heartbeat on <em>every screen.</em></>} intro={<>Install it once, sign in with your email and the six-digit code, and Heartbeat takes care of the rest. During the private test you need an invite to sign in: <a href="/#request">join early access</a> if you don’t have one yet.</>}>
     <nav className="ps-jump" aria-label="Devices"><a href="#windows"><Monitor size={15} />Windows</a><a href="#mac"><Apple size={15} />Mac</a><a href="#android"><Smartphone size={15} />Android</a><a href="#iphone"><Tablet size={15} />iPhone & iPad</a><a href="#web"><Tv size={15} />Browser & TV</a><a href="#using">Using Heartbeat</a></nav>
 
     <section id="windows" className="ps-guide">

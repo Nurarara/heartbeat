@@ -36,3 +36,4 @@
 .hp-studio-moods button[aria-pressed=true]{border-color:var(--hp-accent);background:color-mix(in srgb,var(--hp-accent) 14%,transparent);font-weight:600}
 .hp-studio-moods button:disabled{opacity:.6;cursor:wait}
 .hp-mood-note{font-size:12px!important;opacity:.7}.hp-small-link{font-size:12px!important}
+.hp-join-early{margin:0 0 18px}

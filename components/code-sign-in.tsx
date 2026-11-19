@@ -6,7 +6,7 @@ import { Brand, productAPI } from './product-shell';
 /** Private beta sign-in: email address, then the six-digit code we email. One page for new and returning testers. */
 export function CodeSignIn({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
   const [step, setStep] = useState<'email' | 'code'>('email'), [address, setAddress] = useState(''), [code, setCode] = useState('');
-  const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [wait, setWait] = useState(0), [devCode, setDevCode] = useState('');
+  const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [joined, setJoined] = useState(''), [wait, setWait] = useState(0), [devCode, setDevCode] = useState('');
   const codeInput = useRef<HTMLInputElement>(null), submitted = useRef('');
 
   useEffect(() => { if (wait <= 0) return; const timer = setTimeout(() => setWait(value => value - 1), 1000); return () => clearTimeout(timer); }, [wait]);
@@ -25,15 +25,22 @@ export function CodeSignIn({ onSignedIn }: { onSignedIn: () => Promise<void> }) 
     try { await productAPI('auth/code/verify', { email: address, code: value }); await onSignedIn(); }
     catch (reason) { setMessage((reason as Error).message); setBusy(false); }
   }
+  // Not invited yet: one tap puts this email on the early access list (the owner gets an email).
+  async function join() {
+    setBusy(true);
+    try { const value = await productAPI<{ message: string }>('access-request', { email: address }); setJoined(address); setMessage(value.message); }
+    catch (reason) { setMessage((reason as Error).message); } finally { setBusy(false); }
+  }
   function typed(value: string) { const digits = value.replace(/\D/g, '').slice(0, 6); setCode(digits); if (digits.length === 6) void verify(digits); }
 
   return <div className="hp-site hp-auth"><div className="hp-auth-form"><Brand /><a href="/" className="hp-auth-back"><ArrowLeft size={14} /> Back to the world</a>
     <p className="hp-eyebrow">PRIVATE TEST</p>
     <h1>{step === 'email' ? <>Come<br /><em>on in.</em></> : <>Check your<br /><em>email.</em></>}</h1>
     <p>{step === 'email' ? 'Enter the email you were invited with. We’ll send you a six-digit code. No password needed.' : <>We sent a code to <strong>{address}</strong>. It works for 10 minutes.</>}</p>
-    {message && <p className="hp-message hp-auth-feedback" role="status">{message}{/invite list/.test(message) && <> <a href="/#request">Join the waitlist</a></>}</p>}
+    {message && <p className="hp-message hp-auth-feedback" role="status">{message}</p>}
+    {step === 'email' && /invite list/.test(message) && joined !== address && <button type="button" className="hp-button hp-outline hp-join-early" disabled={busy} onClick={() => void join()}>{busy ? 'One moment…' : 'Join early access with this email'}<ArrowRight size={17} /></button>}
     {step === 'email' ? <form onSubmit={send}>
-      <label>Email address<input type="email" autoComplete="email" required autoFocus value={address} onChange={event => setAddress(event.target.value)} placeholder="you@example.com" /></label>
+      <label>Email address<input type="email" autoComplete="email" required autoFocus value={address} onChange={event => { setAddress(event.target.value); if (message) setMessage(''); }} placeholder="you@example.com" /></label>
       <button className="hp-button" disabled={busy}>{busy ? 'Sending…' : 'Send my code'}<ArrowRight size={17} /></button>
     </form> : <form onSubmit={event => { event.preventDefault(); submitted.current = ''; void verify(); }}>
       <label>Six-digit code<input ref={codeInput} className="hp-code-input" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required value={code} onChange={event => typed(event.target.value)} placeholder="••••••" aria-describedby="code-help" /></label>
