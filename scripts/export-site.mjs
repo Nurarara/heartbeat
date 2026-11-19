@@ -1,6 +1,6 @@
-// Builds the public early-access site (landing, prepared demo and the city/mood preview) as a
-// static folder for free hosting such as Cloudflare Pages. No account, AI or database routes.
-// The only outbound requests are the visitor's city search and current temperature (Open-Meteo).
+// Builds the public landing site (landing and prepared demo) as a static folder for free hosting such as
+// Cloudflare Pages. No account, AI or database routes, and no outbound requests: "Make it yours" links to the
+// waitlist on the app site.
 import {createServer} from 'node:http';
 import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -10,7 +10,7 @@ import {DEMO_SCENES} from '../lib/demo-scenes.ts';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Heartbeat — a screen with a pulse</title><meta name="description" content="AI art for your screen that follows the time, weather and mood where you are."><meta name="theme-color" content="#09121a"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css"></head><body><div id="root"></div><script type="module" src="/site.js"></script></body></html>`;
-export const SITE_HEADERS={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src https://geocoding-api.open-meteo.com https://api.open-meteo.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
+export const SITE_HEADERS={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
 /** Every file the site needs, keyed by its public path. */
 export async function siteFiles(){
  const bundle=await build({entryPoints:[path.join(root,'components/early-site-entry.tsx')],bundle:true,platform:'browser',format:'esm',target:'es2022',outfile:path.join(root,'.sites-runtime/site/site.js'),write:false,minify:true,define:{'process.env.NODE_ENV':'"production"'},tsconfig:path.join(root,'tsconfig.json'),logLevel:'silent'});

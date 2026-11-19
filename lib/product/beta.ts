@@ -175,7 +175,7 @@ const paceText = (row: { rhythm_minutes?: number | null; daily_limit?: number | 
 /** Public: someone asks to join the test. Stored for the owner, who is emailed. Replies the same either way. */
 export async function accessRequest(request: Request, env: ProductEnv, now: number, fetcher: typeof fetch) {
   const input = await readJSON(request, 2048);
-  const thanks = json({ received: true, message: 'Thank you. We’ll email you when there’s a place for you.' });
+  const thanks = json({ received: true, message: 'You’re on the waitlist. We’ll email you when there’s a place for you.' });
   if (typeof input.website === 'string' && input.website.trim()) return thanks; // a form-filling robot
   const address = email(input.email);
   const name = typeof input.name === 'string' ? input.name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80) : '';
@@ -190,8 +190,8 @@ export async function accessRequest(request: Request, env: ProductEnv, now: numb
   const owner = ownerEmail(env);
   if (owner && env.HEARTBEAT_EMAIL_API_KEY && env.HEARTBEAT_EMAIL_FROM) {
     const origin = env.HEARTBEAT_APP_ORIGIN || '';
-    const text = `${name || 'Someone'} (${address}) asked to try Heartbeat.\n\n${note ? `Their note: ${note}\n\n` : ''}Invite or dismiss them on your dashboard: ${origin}/admin#requests`;
-    try { await fetcher('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.HEARTBEAT_EMAIL_FROM, to: [owner], reply_to: address, subject: `Heartbeat access request: ${name ? `${name} · ` : ''}${address}`, text }) }); }
+    const text = `${name || 'Someone'} (${address}) joined the Heartbeat waitlist.\n\n${note ? `Their note: ${note}\n\n` : ''}Invite or dismiss them on your dashboard: ${origin}/admin#requests`;
+    try { await fetcher('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.HEARTBEAT_EMAIL_FROM, to: [owner], reply_to: address, subject: `Heartbeat waitlist: ${name ? `${name} · ` : ''}${address}`, text }) }); }
     catch { /* the request is saved on the dashboard either way */ }
   }
   return thanks;

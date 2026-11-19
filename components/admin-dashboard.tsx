@@ -88,7 +88,7 @@ function PaceEditor({ email, value, defaults, dirty, onChange }: { email: string
   </div>;
 }
 
-const EXPORTS: [string, string][] = [['testers', 'Testers'], ['sessions', 'Screen sessions'], ['pictures', 'Pictures'], ['activity', 'Activity'], ['changes', 'Change log'], ['requests', 'Access requests'], ['daily', 'Daily totals']];
+const EXPORTS: [string, string][] = [['testers', 'Testers'], ['sessions', 'Screen sessions'], ['pictures', 'Pictures'], ['activity', 'Activity'], ['changes', 'Change log'], ['requests', 'Waitlist'], ['daily', 'Daily totals']];
 
 function Stat({ icon, label, value, note, tone }: { icon: React.ReactNode; label: string; value: string; note?: string; tone?: 'live' | 'warn' }) {
   return <div className="ad-stat" data-tone={tone}><span className="ad-stat-label">{icon}{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>;
@@ -154,7 +154,7 @@ export function AdminDashboard() {
       <Stat icon={<Clock3 size={14} />} label="Watch time today" value={duration(today?.seconds || 0)} note={`${today?.viewers || 0} people · ${today?.sessions || 0} sessions`} />
       <Stat icon={<Clock3 size={14} />} label={`Watch time, ${data.days} days`} value={duration(range)} note={`Average session ${duration(sessions ? range / sessions : 0)}`} />
       <Stat icon={<ImageIcon size={14} />} label="Pictures today" value={String(today?.pictures || 0)} note={`Default: every ${data.cadenceMinutes} min · up to ${data.dailyPicturesPerTester} each a day`} />
-      <a href="#requests" className="ad-stat-link"><Stat icon={<Inbox size={14} />} label="Access requests" value={String(data.requests.filter(r => r.status === 'new').length)} note="waiting for you" tone={data.requests.some(r => r.status === 'new') ? 'warn' : undefined} /></a>
+      <a href="#requests" className="ad-stat-link"><Stat icon={<Inbox size={14} />} label="Waitlist" value={String(data.requests.filter(r => r.status === 'new').length)} note="waiting for you" tone={data.requests.some(r => r.status === 'new') ? 'warn' : undefined} /></a>
       <Stat icon={<Wallet size={14} />} label="Spent today (UTC)" value={money(used)} note={cap ? `of ${money(cap)} daily cap · ${data.budget.painter}` : 'No daily cap set'} tone={share >= .8 ? 'warn' : undefined} />
     </section>
     {cap > 0 && <div className="ad-meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={used} aria-label="Daily spend"><span style={{ width: `${Math.min(100, share * 100)}%` }} data-warn={share >= .8} /><small>{share >= 1 ? 'Daily cap reached: screens keep their last picture until midnight UTC.' : `${Math.round(share * 100)}% of today’s cap used`}</small></div>}
@@ -169,7 +169,7 @@ export function AdminDashboard() {
       <Breakdown title="Devices (watch time)" total={deviceTotal} rows={data.devices.map(d => ({ key: d.device, label: d.device[0].toUpperCase() + d.device.slice(1), value: Number(d.seconds) }))} />
     </div>
 
-    <section className="ad-card" id="requests"><header><h2>Access requests</h2><span className="ad-sub"><Inbox size={14} aria-hidden="true" /> {data.requests.filter(r => r.status === 'new').length} waiting · people who asked on the website</span></header>
+    <section className="ad-card" id="requests"><header><h2>Waitlist</h2><span className="ad-sub"><Inbox size={14} aria-hidden="true" /> {data.requests.filter(r => r.status === 'new').length} waiting · people who asked on the website</span></header>
       {data.requests.length ? <div className="ad-scroll"><table className="ad-table"><thead><tr><th>Asked</th><th>Person</th><th>Their note</th><th>Status</th><th /></tr></thead><tbody>
         {data.requests.map(r => <tr key={r.id} data-status={r.status}><td>{clock(r.created_at)}</td><td><strong>{r.name || '—'}</strong><small>{r.email}</small></td><td className="ad-reason">{r.note || ''}</td>
           <td><span className="ad-status" data-status={r.status === 'new' ? 'watching' : r.status === 'invited' ? 'joined' : 'invited'}>{r.status === 'new' ? 'Waiting' : r.status === 'invited' ? 'Invited' : 'Dismissed'}</span></td>

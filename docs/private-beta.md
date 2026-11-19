@@ -102,9 +102,10 @@ tester's row, type minutes between pictures and a daily limit and press Save (em
 
 ## Managing the test from your dashboard
 
-- **Access requests:** people can ask to join from the website (Request access). You get an email
-  (reply goes to them) and the request appears under **Access requests** with **Invite** and
-  **Dismiss**. Inviting marks it handled; they can then sign in with that email.
+- **Waitlist:** people join from the website (**Join the waitlist** on app.heartbeatart.co.uk; **Make it
+  yours** on heartbeatart.co.uk goes there too). You get an email (reply goes to them) and they appear
+  under **Waitlist** with **Invite** and **Dismiss**. Inviting marks it handled; they can then sign in
+  with that email.
 - **Picture pace:** each row (including yours) has three boxes: minutes between pictures, the most
   pictures per day, and a **total** for the whole test (empty = 60 min, 30 a day, no total). Change
   as many rows as you like; a bar appears with **Save changes** and **Discard**. Nothing applies until

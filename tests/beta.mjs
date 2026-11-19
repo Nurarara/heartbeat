@@ -200,8 +200,8 @@ console.log('private beta: ok');
 
   // Someone asks to join: saved, and the owner is emailed (with reply-to the person).
   const asked = await k.call('access-request', { name: 'Priya', email: 'Priya@Example.test', note: 'I have a spare tablet' });
-  assert.equal(asked.status, 200); assert.match((await asked.json()).message, /Thank you/);
-  const mail = k.emails.find(m => m.to[0] === 'boss@example.test' && /access request/.test(m.subject));
+  assert.equal(asked.status, 200); assert.match((await asked.json()).message, /on the waitlist/);
+  const mail = k.emails.find(m => m.to[0] === 'boss@example.test' && /waitlist/.test(m.subject));
   assert.ok(mail); assert.equal(mail.reply_to, 'priya@example.test'); assert.match(mail.text, /spare tablet/); assert.match(mail.text, /\/admin#requests/);
   // Asking twice doesn't duplicate; robots (honeypot) and invited people aren't stored; bad emails are refused.
   await k.call('access-request', { name: 'Priya', email: 'priya@example.test' });

@@ -111,7 +111,7 @@ In darkness only dark palettes are drawn and the image prompt opens with the dar
 
 ## The public early-access site
 
-`npm run site:export` builds a static site into `outputs/heartbeat-site` for free hosting (Cloudflare Pages): a landing page, the prepared demo, and a short "city, mood, preview" taste that ends in an early-access email address. `npm run site:preview` serves it locally with the same security headers. It has no accounts, payments or AI calls and collects nothing. The preview shows prepared example artwork, labelled as such; only the city's clock, the temperature and the sky description are live. Its only outbound requests are the visitor's city search and current temperature from Open-Meteo, whose terms for commercial use still need review before the product is sold.
+`npm run site:export` builds the landing site for heartbeatart.co.uk into `outputs/heartbeat-site` for free hosting (Cloudflare Pages): a landing page and the prepared demo. **Make it yours** goes to the waitlist form on https://app.heartbeatart.co.uk/#request, which saves each sign-up on the owner dashboard (Access requests) and emails the owner. `npm run site:preview` serves it locally with the same security headers. It has no accounts, payments or AI calls, makes no outbound requests and collects nothing itself.
 
 ## Why old pictures could remain
 
