@@ -16,7 +16,7 @@ export async function deviceRoute(request:Request,env:JobEnv,path:string,now:num
  }
  if(!['device/status','device/refresh','device/display','device/disconnect'].includes(path)&&!path.startsWith('device/art/'))return null;
  const token=request.headers.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];if(!token)throw new ProductError('Pair this desktop again.',401);
- const device=await db(env).prepare("SELECT id,owner,expires,surface_id,credential_epoch FROM hb_devices WHERE secret_hash=? AND expires>? AND code_hash NOT LIKE 'picture-link:%' AND code_hash NOT LIKE 'app-sign-in:%'").bind(await hash(token),now).first<{id:string;owner:string|null;expires:number;surface_id:string|null;credential_epoch:number}>();if(!device)throw new ProductError('Pairing expired or the device was disconnected.',401);
+ const device=await db(env).prepare("SELECT id,owner,expires,surface_id,credential_epoch FROM hb_devices WHERE secret_hash=? AND expires>? AND code_hash NOT LIKE 'picture-link:%' AND code_hash NOT LIKE 'picture-key:%' AND code_hash NOT LIKE 'app-sign-in:%'").bind(await hash(token),now).first<{id:string;owner:string|null;expires:number;surface_id:string|null;credential_epoch:number}>();if(!device)throw new ProductError('Pairing expired or the device was disconnected.',401);
  if(!device.owner)return json({paired:false});
  const user=await db(env).prepare("SELECT * FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(device.owner,device.credential_epoch).first<User>();if(!user)throw new ProductError('The account is unavailable. Pair again.',401);
  if(path==='device/disconnect'&&request.method==='POST'){await db(env).prepare('DELETE FROM hb_devices WHERE id=?').bind(device.id).run();return json({disconnected:true});}

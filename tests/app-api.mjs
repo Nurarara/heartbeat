@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { fixture } from './product-fixture.mjs';
+import { processAccountDeletions } from '../lib/product/lifecycle.ts';
+import { hash } from '../lib/product/core.ts';
 
 const OWNER = 'owner@example.test';
 const f = await fixture({ production: true, env: { HEARTBEAT_BETA: 'true', HEARTBEAT_OWNER_EMAIL: OWNER, HEARTBEAT_EMAIL_API_KEY: 'fixture-mail', HEARTBEAT_EMAIL_FROM: 'Heartbeat <hello@example.test>', HEARTBEAT_DAILY_BUDGET_MICROS: '5000000', HEARTBEAT_DIRECTOR_ESTIMATE_MICROS: '2000', HEARTBEAT_IMAGE_ESTIMATE_MICROS: '40000' } });
@@ -99,6 +101,17 @@ assert.equal((await f.service.handle(new Request('https://heartbeat.example' + l
 assert.equal(work(), before);
 assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { method: 'POST', headers: { Authorization: `Bearer ${linkKey}` } }))).status, 200);
 assert.ok(f.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_jobs').get().n > JSON.parse(before)[0], 'POST with the header asks for the next picture when it is due');
+assert.equal(f.sqlite.prepare('SELECT code_hash FROM hb_devices WHERE id=?').get(created.deviceId).code_hash.startsWith('picture-key:'), true);
+// A link made before this change (shared as an address) can still read, but can never ask for a picture.
+const legacyKey = 'b'.repeat(64), legacyId = crypto.randomUUID(), ownerRow = f.sqlite.prepare('SELECT id,credential_epoch FROM hb_users WHERE email=?').get(OWNER);
+f.sqlite.prepare('INSERT INTO hb_devices(id,owner,secret_hash,code_hash,expires,created_at,name,credential_epoch) VALUES (?,?,?,?,?,?,?,?)').run(legacyId, ownerRow.id, await hash(legacyKey), `picture-link:${legacyId}`, f.now() + 86400000, f.now(), 'iPhone & iPad · Shortcuts link', ownerRow.credential_epoch || 0);
+f.sqlite.prepare("UPDATE hb_jobs SET status='canceled' WHERE status='accepted'").run();
+const legacyBefore = work();
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg?key=' + legacyKey))).status, 200, 'An older link still shows the newest picture');
+const legacyPost = await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { method: 'POST', headers: { Authorization: `Bearer ${legacyKey}` } }));
+assert.equal(legacyPost.status, 403, 'An older link can never ask for a new picture'); assert.match((await legacyPost.json()).error, /older picture link/);
+assert.equal(work(), legacyBefore, 'Nothing started by the older link');
+f.sqlite.prepare('DELETE FROM hb_devices WHERE id=?').run(legacyId);
 const second = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
 assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath))).status, 404, 'A new link turns the old one off');
 const listed = await (await f.call('devices', undefined, { cookie: web })).json();
@@ -172,11 +185,23 @@ await f.call('auth/code/send', { email: 'dana@example.test' });
 const signInCode = codeFor('dana@example.test');
 assert.equal((await f.call('account/delete', { code: signInCode === deletionCode ? '000000' : signInCode }, { cookie: dana })).status, 403, 'A sign-in code cannot delete an account');
 assert.equal((await f.call('account/delete', {}, { cookie: dana })).status, 403, 'Nothing to confirm with: refused');
+assert.equal((await f.call('access-request', { email: 'dana@example.test', name: 'Dana', note: 'hi' })).status, 200); // something else that names her
+assert.equal((await f.call('admin/pace', { email: 'dana@example.test', rhythmMinutes: 5 }, { cookie: web })).status, 200); // and a change-log entry
 assert.equal(f.sqlite.prepare("SELECT lifecycle FROM hb_users WHERE email='dana@example.test'").get().lifecycle, 'active', 'Still here after wrong confirmations');
 assert.equal((await f.call('account/delete', { code: deletionCode }, { cookie: dana })).status, 200, 'The deletion code deletes the account');
 assert.equal(f.sqlite.prepare("SELECT lifecycle FROM hb_users WHERE email='dana@example.test'").get().lifecycle, 'deleting');
 assert.equal((await app('state', undefined, danaApp)).status, 401, 'Their app is signed out at once');
 assert.equal((await f.call('auth/session', undefined, { cookie: dana })).status === 200 && (await (await f.call('auth/session', undefined, { cookie: dana })).json()).user, null, 'Their browser is signed out');
+// Once the deletion worker finishes, nothing identifies her: searched by user id and by email.
+const danaId = f.sqlite.prepare("SELECT id FROM hb_users WHERE email='dana@example.test'").get().id;
+for (let i = 0; i < 5 && f.sqlite.prepare("SELECT state FROM hb_deletions WHERE owner=?").get(danaId)?.state !== 'completed'; i++) { f.advance(120000); await processAccountDeletions(f.env, f.now()); }
+assert.equal(f.sqlite.prepare("SELECT state FROM hb_deletions WHERE owner=?").get(danaId).state, 'completed');
+const mentions = { users: "SELECT COUNT(*) AS n FROM hb_users WHERE id=? OR email=?", activity: "SELECT COUNT(*) AS n FROM hb_activity WHERE user_id=? OR email=?", codes: "SELECT COUNT(*) AS n FROM hb_login_codes WHERE email=? OR email=?", requests: "SELECT COUNT(*) AS n FROM hb_access_requests WHERE email=? OR email=?", invites: "SELECT COUNT(*) AS n FROM hb_invites WHERE email=? OR email=?", changes: "SELECT COUNT(*) AS n FROM hb_admin_log WHERE target=? OR target=? OR actor=?", views: "SELECT COUNT(*) AS n FROM hb_view_sessions WHERE user_id=? OR user_id=?", devices: "SELECT COUNT(*) AS n FROM hb_devices WHERE owner=? OR owner=?", sessions: "SELECT COUNT(*) AS n FROM hb_sessions WHERE user_id=? OR user_id=?" };
+for (const [table, sql] of Object.entries(mentions)) {
+  const args = table === 'codes' ? ['dana@example.test', 'delete:dana@example.test'] : table === 'changes' ? [danaId, 'dana@example.test', 'dana@example.test'] : [danaId, 'dana@example.test'];
+  assert.equal(f.sqlite.prepare(sql).get(...args).n, 0, `No ${table} left for the deleted account`);
+}
+assert.ok(f.sqlite.prepare("SELECT COUNT(*) AS n FROM hb_admin_log WHERE target='a deleted account'").get().n >= 1, 'The owner’s change log keeps the entry without the name');
 // The deletion code was single-use and never signs anyone in.
 assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM hb_login_codes WHERE email='delete:dana@example.test'").get().n, 0);
 assert.equal((await f.call('auth/code/verify', { email: 'dana@example.test', code: deletionCode })).status === 200 && deletionCode !== signInCode, false, 'A deletion code is not a sign-in code');

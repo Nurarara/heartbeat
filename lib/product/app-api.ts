@@ -55,8 +55,8 @@ async function showLatest(request: Request, env: JobEnv, user: User, now: number
 export async function createPictureLink(env: JobEnv, user: User, now: number) {
   const database = db(env), token = randomToken(), id = crypto.randomUUID();
   await database.batch([
-    database.prepare("DELETE FROM hb_devices WHERE owner=? AND code_hash LIKE 'picture-link:%'").bind(user.id),
-    database.prepare('INSERT INTO hb_devices(id,owner,secret_hash,code_hash,expires,created_at,name,credential_epoch) VALUES (?,?,?,?,?,?,?,?)').bind(id, user.id, await hash(token), `picture-link:${id}`, now + DEVICE_DAYS * 86400000, now, 'iPhone & iPad · Shortcuts link', user.credential_epoch || 0),
+    database.prepare("DELETE FROM hb_devices WHERE owner=? AND (code_hash LIKE 'picture-link:%' OR code_hash LIKE 'picture-key:%')").bind(user.id),
+    database.prepare('INSERT INTO hb_devices(id,owner,secret_hash,code_hash,expires,created_at,name,credential_epoch) VALUES (?,?,?,?,?,?,?,?)').bind(id, user.id, await hash(token),  `picture-key:${id}`, now + DEVICE_DAYS * 86400000, now, 'iPhone & iPad · Shortcuts link', user.credential_epoch || 0),
   ]);
   await logActivity(env, { userId: user.id, email: user.email, kind: 'picture_link' }, now);
   return { url: `/api/product/app/picture.jpg`, key: token, deviceId: id };
@@ -74,8 +74,11 @@ export async function appRoute(request: Request, env: JobEnv, path: string, now:
     const key = refresh ? header : header || new URL(request.url).searchParams.get('key') || '';
     if (refresh && !header) throw new ProductError('Send the picture key in the Authorization header.', 401);
     if (!/^[a-f0-9]{64}$/.test(key)) throw new ProductError('This picture link is not valid.', 404);
-    const link = await db(env).prepare("SELECT id,owner,credential_epoch FROM hb_devices WHERE secret_hash=? AND expires>? AND code_hash LIKE 'picture-link:%'").bind(await hash(key), now).first<{ id: string; owner: string; credential_epoch: number }>();
+    // Keys made before 20 November 2026 ('picture-link:') were shared as addresses: they can only ever read.
+    // Keys made since ('picture-key:') may also ask for the next picture.
+    const link = await db(env).prepare("SELECT id,owner,credential_epoch,code_hash FROM hb_devices WHERE secret_hash=? AND expires>? AND (code_hash LIKE 'picture-link:%' OR code_hash LIKE 'picture-key:%')").bind(await hash(key), now).first<{ id: string; owner: string; credential_epoch: number; code_hash: string }>();
     if (!link) throw new ProductError('This picture link was turned off. Create a new one in your studio.', 404);
+    if (refresh && !link.code_hash.startsWith('picture-key:')) throw new ProductError('This older picture link can only show your newest picture. Create a new picture key in your studio to get new ones.', 403);
     await rate(env, `picture-link:${link.id}`, now, 30, 3600000);
     const user = await db(env).prepare("SELECT * FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(link.owner, link.credential_epoch).first<User>();
     if (!user || (betaMode(env) && !await invited(env, user.email))) throw new ProductError('This picture link was turned off.', 404);

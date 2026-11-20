@@ -12,8 +12,8 @@ npm run beta:serve
 ```
 
 The first command compiles `clients/windows/Heartbeat.cs` into `public/downloads/Heartbeat.exe`,
-runs its self-tests and writes `public/downloads/windows.json` (version and checksum, for updates).
-The second rebuilds and starts the site so the download is served. Neither file is committed.
+runs its self-tests and writes `public/downloads/windows.json` (version, checksum and release signature, for updates).
+The second rebuilds and starts the site so the download is served. Both files are committed, so testers can download them straight away.
 
 ## What testers do
 
@@ -59,9 +59,11 @@ away via **Check for updates**.
 
 Installed apps only accept an update whose details are signed with Heartbeat's **release key**. Keep
 the key file at `.release/windows-release-key.pem` (ignored by git; or set `HEARTBEAT_WINDOWS_RELEASE_KEY`
-to its path) and `npm run windows:build` signs `windows.json` for you. Without the key the build still
-works for new downloads, but installed apps won't update. Never put the key on the server, in the
-repository or in chat; if it's lost, testers reinstall once from the download page.
+to its path) and `npm run windows:build` signs `windows.json` for you. Without the key it stops before
+changing anything in `public/downloads` (an unsigned release would be refused by installed apps). For an
+unsigned test build, `npm run windows:build -- --dev` writes to `outputs/windows-dev/` and never publishes.
+Never put the key on the server, in the repository or in chat; if it's lost, testers reinstall once from
+the download page.
 
 `npm run test:windows` runs the real app (with Mono off Windows) against a local server: unsigned,
 altered, re-used and forged updates must be refused and leave the installed app untouched.

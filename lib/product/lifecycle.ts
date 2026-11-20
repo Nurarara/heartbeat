@@ -32,7 +32,20 @@ export async function processAccountDeletions(env:ProductEnv,now=Date.now(),limi
   for(const {art_key:key} of keys.results){await env.BUCKET!.delete(key);await database.batch([database.prepare("UPDATE hb_assets SET state='deleted',updated_at=? WHERE owner=? AND art_key=?").bind(now,row.owner,key),database.prepare("UPDATE ai_attempts SET art_key=NULL,candidate=NULL,image_hash=NULL WHERE owner=? AND art_key=?").bind(row.owner,key)]);}
   if(keys.results.length===32){await database.prepare('UPDATE hb_deletions SET next_attempt_at=? WHERE id=?').bind(now,row.id).run();continue;}
   const tombstone=`deleted-${await hash(row.owner)}`;
+  // Private-test records hold the email in plain text: they go too. The owner's change log keeps its entries
+  // (what changed, when) but no longer names the person.
+  const address=(await database.prepare('SELECT email FROM hb_users WHERE id=?').bind(row.owner).first<{email:string}>())?.email||'';
+  const forgotten=address?[
+   database.prepare("DELETE FROM hb_activity WHERE user_id=? OR (email<>'' AND email=?)").bind(row.owner,address),
+   database.prepare('DELETE FROM hb_login_codes WHERE email=? OR email=?').bind(address,`delete:${address}`),
+   database.prepare('DELETE FROM hb_access_requests WHERE email=?').bind(address),
+   database.prepare('DELETE FROM hb_invites WHERE email=?').bind(address),
+   database.prepare("UPDATE hb_admin_log SET target='a deleted account' WHERE target=?").bind(address),
+   database.prepare("UPDATE hb_admin_log SET actor='a deleted account' WHERE actor=?").bind(address),
+  ]:[database.prepare('DELETE FROM hb_activity WHERE user_id=?').bind(row.owner)];
   await database.batch([
+   ...forgotten,
+   database.prepare('DELETE FROM hb_view_sessions WHERE user_id=?').bind(row.owner),
    ...['hb_likes','hb_profiles','hb_checkout','hb_billing','hb_google_identities'].map(table=>database.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(row.owner)),
    database.prepare('DELETE FROM hb_google_states WHERE owner_id=?').bind(row.owner),
    database.prepare('DELETE FROM hb_display_events WHERE owner_id=?').bind(row.owner),database.prepare('DELETE FROM hb_surfaces WHERE owner_id=?').bind(row.owner),database.prepare('DELETE FROM hb_worlds WHERE owner_id=?').bind(row.owner),
