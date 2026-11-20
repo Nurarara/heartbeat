@@ -85,7 +85,7 @@ Next time, `npm run beta:serve nobuild` starts faster when the code hasn't chang
 - **https://app.heartbeatart.co.uk** is the public website: what Heartbeat is, downloads for every
   device (it suggests the right one), step-by-step help at `/download`, FAQ, terms and privacy.
 - **Windows, Mac, Android** apps, and **iPhone/iPad** through Add to Home Screen plus a lock-screen
-  picture link (studio → Room for your desktop). See [how-heartbeat-works.md](how-heartbeat-works.md).
+  picture key (studio → Room for your desktop). See [how-heartbeat-works.md](how-heartbeat-works.md).
 - The **Mac app** is built for free on GitHub's Mac computers whenever `clients/mac` changes
   (`.github/workflows/mac.yml`), and the build is committed to `public/downloads` automatically.
 - The contact address on the website is `hello@heartbeatart.co.uk`: add it in Cloudflare →

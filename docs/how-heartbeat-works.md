@@ -194,7 +194,7 @@ Privacy & Security → Open Anyway). Built automatically on GitHub's free Mac ru
 
 Apple doesn't allow apps outside the App Store without a paid developer account, so Heartbeat uses
 two free, built-in routes: **Add to Home Screen** (the display opens full-screen and keeps the screen
-on), and a **private picture link** for a Shortcuts automation that sets the lock screen every hour.
+on), and a **private picture key** for a Shortcuts automation that sets the lock screen every hour (POST with an Authorization header; a plain visit only reads the newest picture).
 The link can only fetch the newest picture, is one per person, is rate limited, and is turned off by
 creating a new one or disconnecting it in the studio.
 

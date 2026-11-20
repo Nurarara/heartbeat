@@ -33,23 +33,25 @@ async function deviceFor(request: Request, env: JobEnv, now: number) {
 /** The platform word in a device name, e.g. "Windows · LAPTOP-2KH" → "windows". */
 const platformOf = (device: Device) => device.name.split(' · ')[0].toLowerCase();
 
-/** Starts a picture when one is due (the screen is showing) and returns the newest ready picture. */
-async function showLatest(request: Request, env: JobEnv, user: User, now: number) {
+/** Starts a picture when one is due (the screen is showing) and returns the newest ready picture.
+ *  With readOnly it only reads the newest picture: nothing is started and nothing is marked as shown. */
+async function showLatest(request: Request, env: JobEnv, user: User, now: number, readOnly = false) {
   const profile = await profileFor(env, user.id, {}, now);
   if (!profile.preferences) return { profile, latest: null, notice: 'Choose your city in your studio first.' };
   let notice = '';
-  try {
+  if (!readOnly) try {
     const rhythm = betaMode(env) ? (await testerPace(env, user.email)).cadence : 3600000, force = !profile.memory;
     const key = await hash(`${user.id}:app:${Math.floor(now / rhythm)}:${force ? 1 : 0}:${profile.version}:${profile.memoryVersion}`);
     const started = await (await generation(request, env, user, { requestId: `${key.slice(0, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}-${key.slice(16, 20)}-${key.slice(20, 32)}`, surfaceId: profile.surfaceId, force }, now)).json() as { status?: string; reason?: string };
     if (started.status === 'failed' && started.reason) notice = started.reason;
   } catch (error) { if (error instanceof ProductError) { if (error.status !== 409) notice = error.message; } else throw error; }
   const latest = await db(env).prepare("SELECT a.id,a.status,a.art_key FROM ai_attempts a JOIN hb_assets m ON m.id=a.id AND m.owner=a.owner AND m.art_key=a.art_key AND m.state='ready' WHERE a.owner=? AND a.art_key IS NOT NULL AND a.status IN ('ready','displayed') ORDER BY a.created_at DESC LIMIT 1").bind(user.id).first<{ id: string; status: string; art_key: string }>();
-  if (latest?.status === 'ready') { try { await acknowledgeDisplay(env, user.id, { id: latest.id, surfaceId: profile.surfaceId }, now); } catch { /* shown either way */ } }
+  if (latest?.status === 'ready' && !readOnly) { try { await acknowledgeDisplay(env, user.id, { id: latest.id, surfaceId: profile.surfaceId }, now); } catch { /* shown either way */ } }
   return { profile, latest, notice };
 }
 
-/** One private picture link per person, for iPhone/iPad Shortcuts (lock screen). It can only fetch the newest picture. */
+/** One private picture key per person, for iPhone/iPad Shortcuts (lock screen). It can only fetch the newest picture,
+ *  and (sent in a header with POST) ask for the next one when it's due. */
 export async function createPictureLink(env: JobEnv, user: User, now: number) {
   const database = db(env), token = randomToken(), id = crypto.randomUUID();
   await database.batch([
@@ -57,23 +59,27 @@ export async function createPictureLink(env: JobEnv, user: User, now: number) {
     database.prepare('INSERT INTO hb_devices(id,owner,secret_hash,code_hash,expires,created_at,name,credential_epoch) VALUES (?,?,?,?,?,?,?,?)').bind(id, user.id, await hash(token), `picture-link:${id}`, now + DEVICE_DAYS * 86400000, now, 'iPhone & iPad · Shortcuts link', user.credential_epoch || 0),
   ]);
   await logActivity(env, { userId: user.id, email: user.email, kind: 'picture_link' }, now);
-  return { url: `/api/product/app/picture.jpg?key=${token}`, deviceId: id };
+  return { url: `/api/product/app/picture.jpg`, key: token, deviceId: id };
 }
 
 export async function appRoute(request: Request, env: JobEnv, path: string, now: number, fetcher: typeof fetch): Promise<Response> {
   const route = path.slice('app/'.length);
 
-  // The private picture link (iPhone Shortcuts): the newest picture as a JPEG; asking counts as showing.
-  if (route === 'picture.jpg' && request.method === 'GET') {
-    // The key can be sent as a header (preferred: stays out of logs) or in the address.
-    const key = request.headers.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] || new URL(request.url).searchParams.get('key') || '';
+  // The private picture key (iPhone Shortcuts): the newest picture as a JPEG.
+  // GET only reads it (with the key in a header, or in the address for older links): nothing is started or marked shown.
+  // POST, with the key in the Authorization header only, also asks for the next picture when it's due (counts as showing).
+  if (route === 'picture.jpg' && (request.method === 'GET' || request.method === 'POST')) {
+    const refresh = request.method === 'POST';
+    const header = request.headers.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] || '';
+    const key = refresh ? header : header || new URL(request.url).searchParams.get('key') || '';
+    if (refresh && !header) throw new ProductError('Send the picture key in the Authorization header.', 401);
     if (!/^[a-f0-9]{64}$/.test(key)) throw new ProductError('This picture link is not valid.', 404);
     const link = await db(env).prepare("SELECT id,owner,credential_epoch FROM hb_devices WHERE secret_hash=? AND expires>? AND code_hash LIKE 'picture-link:%'").bind(await hash(key), now).first<{ id: string; owner: string; credential_epoch: number }>();
     if (!link) throw new ProductError('This picture link was turned off. Create a new one in your studio.', 404);
     await rate(env, `picture-link:${link.id}`, now, 30, 3600000);
     const user = await db(env).prepare("SELECT * FROM hb_users WHERE id=? AND lifecycle='active' AND credential_epoch=?").bind(link.owner, link.credential_epoch).first<User>();
     if (!user || (betaMode(env) && !await invited(env, user.email))) throw new ProductError('This picture link was turned off.', 404);
-    const { latest, notice } = await showLatest(request, env, user, now);
+    const { latest, notice } = await showLatest(request, env, user, now, !refresh);
     const art = latest ? await env.BUCKET?.get(latest.art_key) : null;
     if (!art) throw new ProductError(notice || 'Your first picture is being painted. Try again in a minute.', 404);
     return new Response(art.body, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' } });

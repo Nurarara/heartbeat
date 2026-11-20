@@ -25,7 +25,7 @@ try{
  await assert.rejects(()=>acknowledgeDisplay(f.env,owner,{id,presentationPolicyVersion:999},f.now()),/policy/);
  const atNight=Date.parse('2026-10-21T22:00:00Z');await assert.rejects(()=>acknowledgeDisplay(f.env,owner,{id,eventId:'unsafe-night'},atNight),/night/);
  const policy=presentationPolicy(preferences,p.surface,f.now());assert.ok(policy.safeDayUntil<=f.now()+900000);assert.equal(presentationPolicy(preferences,p.surface,atNight).night,true);
- const disabled=aiService({...f.env,HEARTBEAT_AI_ENABLED:'false'});const read=()=>disabled.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/art/${id}`,{headers:{Cookie:a.cookie}}));assert.equal((await read()).status,200,'Operator suspension of generation must preserve owned image delivery.');
+ const disabled=aiService({...f.env,HEARTBEAT_AI_ENABLED:'false'},{now:f.now});const read=()=>disabled.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/art/${id}`,{headers:{Cookie:a.cookie}}));assert.equal((await read()).status,200,'Operator suspension of generation must preserve owned image delivery.');
  f.advance(8*86400000);await retainAssets(f.env,f.now());assert.equal(f.objects.has(key),true,'Current surface artwork remains protected during retention.');
  const lookup=f.sqlite.prepare('EXPLAIN QUERY PLAN SELECT id FROM hb_devices WHERE secret_hash=?').all('test');assert.ok(lookup.some(row=>row.detail.includes('hb_devices_secret_hash')));
  await assert.rejects(()=>operatorRoute(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/product/ops/status`),f.env,f.now()),/authorization/);

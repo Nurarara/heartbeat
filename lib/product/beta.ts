@@ -41,13 +41,50 @@ export function sixDigits(): string {
 }
 const codeHash = (address: string, code: string) => hash(`heartbeat-login:${address}:${code}`);
 
-async function mailCode(env: ProductEnv, address: string, code: string, fetcher: typeof fetch) {
+async function mailCode(env: ProductEnv, address: string, code: string, fetcher: typeof fetch, purpose: 'login' | 'delete' = 'login') {
+  if (purpose === 'delete') return mailDeletionCode(env, address, code, fetcher);
   const text = `Your Heartbeat sign-in code is ${code}\n\nIt works for 10 minutes. If you didn't ask for it, you can ignore this email.\n\nHeartbeat · AI for ambience`;
   const html = `<div style="font-family:system-ui,sans-serif;max-width:420px;margin:auto;padding:32px 24px;color:#1d1b19"><p style="font-size:14px;letter-spacing:.12em;color:#8a7f73;margin:0 0 24px">HEARTBEAT</p><p style="font-size:16px;margin:0 0 12px">Your sign-in code</p><p style="font-size:36px;letter-spacing:.3em;font-weight:600;margin:0 0 24px">${code}</p><p style="font-size:14px;color:#6b635b;margin:0">It works for 10 minutes. If you didn't ask for it, you can ignore this email.</p></div>`;
   let response: Response;
   try { response = await fetcher('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.HEARTBEAT_EMAIL_FROM, to: [address], subject: `${code} is your Heartbeat code`, text, html }) }) }
   catch { throw new ProductError('The code email could not be sent. Please try again in a minute.', 503); }
   if (!response.ok) throw new ProductError('The code email could not be sent. Please try again in a minute.', 503);
+}
+
+async function mailDeletionCode(env: ProductEnv, address: string, code: string, fetcher: typeof fetch) {
+  const text = `Your code to delete your Heartbeat account is ${code}\n\nIt works for 10 minutes and only for deleting your account. If you didn't ask for this, ignore this email: nothing will be deleted.\n\nHeartbeat · AI for ambience`;
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:420px;margin:auto;padding:32px 24px;color:#1d1b19"><p style="font-size:14px;letter-spacing:.12em;color:#8a7f73;margin:0 0 24px">HEARTBEAT</p><p style="font-size:16px;margin:0 0 12px">Your code to delete your account</p><p style="font-size:36px;letter-spacing:.3em;font-weight:600;margin:0 0 24px">${code}</p><p style="font-size:14px;color:#6b635b;margin:0">It works for 10 minutes and only for deleting your account. If you didn't ask for this, ignore this email: nothing will be deleted.</p></div>`;
+  let response: Response;
+  try { response = await fetcher('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.HEARTBEAT_EMAIL_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.HEARTBEAT_EMAIL_FROM, to: [address], subject: `${code} confirms deleting your Heartbeat account`, text, html }) }); }
+  catch { throw new ProductError('The code email could not be sent. Please try again in a minute.', 503); }
+  if (!response.ok) throw new ProductError('The code email could not be sent. Please try again in a minute.', 503);
+}
+
+// Account deletion by emailed code, for people who sign in with codes and have no password. The code is stored
+// under its own key, so a sign-in code can never delete an account and a deletion code can never sign anyone in.
+const deletionKey = (address: string) => `delete:${address}`;
+export async function sendDeletionCode(request: Request, env: ProductEnv, user: Pick<User, 'id' | 'email'>, now: number, fetcher: typeof fetch) {
+  const local = localDevelopment(request, env);
+  await rate(env, `delete-code:${user.id}`, now, 3);
+  if (!local && (!env.HEARTBEAT_EMAIL_API_KEY || !env.HEARTBEAT_EMAIL_FROM)) throw new ProductError('Email codes are not configured yet.', 503);
+  const code = sixDigits(), key = deletionKey(user.email);
+  await db(env).prepare('INSERT INTO hb_login_codes(email,code_hash,attempts,expires,created_at) VALUES (?,?,0,?,?) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,attempts=0,expires=excluded.expires,created_at=excluded.created_at').bind(key, await codeHash(key, code), now + CODE_TTL, now).run();
+  if (local && (!env.HEARTBEAT_EMAIL_API_KEY || !env.HEARTBEAT_EMAIL_FROM)) return json({ sent: true, devCode: code });
+  await mailCode(env, user.email, code, fetcher, 'delete');
+  return json({ sent: true });
+}
+/** Accepts a deletion code once; wrong, expired or reused codes are refused (with the same attempt limit as sign-in). */
+export async function checkDeletionCode(env: ProductEnv, user: Pick<User, 'email'>, value: unknown, now: number) {
+  const code = typeof value === 'string' ? value.replace(/\s/g, '') : '';
+  if (!/^\d{6}$/.test(code)) throw new ProductError('Enter the six-digit code from the email.', 403);
+  const key = deletionKey(user.email), database = db(env);
+  const claimed = await database.prepare('UPDATE hb_login_codes SET attempts=attempts+1 WHERE email=? AND expires>? AND attempts<? RETURNING code_hash').bind(key, now, CODE_ATTEMPTS).first<{ code_hash: string }>();
+  const expected = await codeHash(key, code);
+  let diff = claimed ? 0 : 1; const actual = claimed?.code_hash || '0'.repeat(64);
+  for (let i = 0; i < 64; i++) diff |= (expected.charCodeAt(i) || 0) ^ (actual.charCodeAt(i) || 0);
+  if (diff !== 0) throw new ProductError('That code didn’t match or has expired. Send a new code.', 403);
+  const used = await database.prepare('DELETE FROM hb_login_codes WHERE email=? AND code_hash=?').bind(key, expected).run();
+  if (!used.meta.changes) throw new ProductError('That code was already used. Send a new code.', 403);
 }
 
 /** Step 1: email a code. In the beta only invited addresses (and the owner) receive one. */

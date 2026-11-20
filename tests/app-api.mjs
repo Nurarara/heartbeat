@@ -73,8 +73,8 @@ assert.equal((await app(`art/${artId}`, undefined, sam.token)).status, 404);
 
 // iPhone picture link: created on the website, returns the newest picture, and can do nothing else.
 const created = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
-assert.match(created.url, /\/api\/product\/app\/picture\.jpg\?key=[a-f0-9]{64}$/);
-const linkPath = new URL(created.url).pathname + new URL(created.url).search, linkKey = new URL(created.url).searchParams.get('key');
+assert.match(created.url, /\/api\/product\/app\/picture\.jpg$/, 'The address carries no key'); assert.match(created.key, /^[a-f0-9]{64}$/);
+const linkKey = created.key, linkPath = '/api/product/app/picture.jpg?key=' + linkKey; // older links put the key in the address
 const pic = await f.service.handle(new Request('https://heartbeat.example' + linkPath));
 assert.equal(pic.status, 200); assert.equal(pic.headers.get('content-type'), 'image/jpeg'); assert.equal((await pic.arrayBuffer()).byteLength, 6);
 assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg?key=' + 'a'.repeat(64)))).status, 404);
@@ -85,15 +85,28 @@ const oldRoute = (path, method = 'GET') => f.service.handle(new Request(`https:/
 assert.equal((await oldRoute('device/status')).status, 401);
 assert.equal((await oldRoute('device/refresh', 'POST')).status, 401);
 assert.equal((await oldRoute(`device/art/${artId}`)).status, 401);
-// The link also works as a header (keeps the key out of logs).
+// The key also works as a header (keeps it out of logs).
 assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { headers: { Authorization: `Bearer ${linkKey}` } }))).status, 200);
+// Reading the picture never starts one or marks it shown, however often it's read.
+const work = () => JSON.stringify([f.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_jobs').get().n, f.sqlite.prepare('SELECT status FROM ai_attempts ORDER BY created_at').all()]);
+f.advance(2 * 3600000);
+f.sqlite.prepare("UPDATE hb_jobs SET status='canceled' WHERE status='accepted'").run(); // no picture in progress, so one is due
+const before = work();
+for (let i = 0; i < 3; i++) { assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath))).status, 200); assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { headers: { Authorization: `Bearer ${linkKey}` } }))).status, 200); }
+assert.equal(work(), before, 'GET is read-only');
+// Asking for the next picture needs POST with the key in the header, never in the address.
+assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath, { method: 'POST' }))).status, 401);
+assert.equal(work(), before);
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { method: 'POST', headers: { Authorization: `Bearer ${linkKey}` } }))).status, 200);
+assert.ok(f.sqlite.prepare('SELECT COUNT(*) AS n FROM hb_jobs').get().n > JSON.parse(before)[0], 'POST with the header asks for the next picture when it is due');
 const second = await (await f.call('devices/picture-link', {}, { cookie: web })).json();
 assert.equal((await f.service.handle(new Request('https://heartbeat.example' + linkPath))).status, 404, 'A new link turns the old one off');
 const listed = await (await f.call('devices', undefined, { cookie: web })).json();
 const linkDevice = listed.devices.find(d => d.name === 'iPhone & iPad · Shortcuts link');
 assert.ok(linkDevice);
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { headers: { Authorization: `Bearer ${second.key}` } }))).status, 200);
 await f.call('device/revoke', { id: linkDevice.id }, { cookie: web });
-assert.equal((await f.service.handle(new Request(second.url.replace(/^https?:\/\/[^/]+/, 'https://heartbeat.example')))).status, 404, 'Disconnecting turns it off');
+assert.equal((await f.service.handle(new Request('https://heartbeat.example/api/product/app/picture.jpg', { headers: { Authorization: `Bearer ${second.key}` } }))).status, 404, 'Disconnecting turns it off');
 
 // Mood from the app is saved to the account and seen by the website.
 assert.equal((await app('mood', { mood: 'romantic' }, token)).status, 200);
@@ -140,6 +153,43 @@ const latestPrefs = await (await f.call('preferences', undefined, { cookie: web 
 const paris = { ...latestPrefs.preferences, location: { name: 'Paris', country: 'France', latitude: 48.85, longitude: 2.35, timezone: 'Europe/Paris' } };
 assert.equal((await f.call('preferences', { preferences: paris, expectedVersion: latestPrefs.version }, { cookie: web })).status, 200);
 assert.equal(f.sqlite.prepare("SELECT status FROM hb_jobs WHERE id='old-city-job'").get().status, 'canceled');
+
+// A tester who signs in with emailed codes (no password) can delete their own account with a deletion code.
+assert.equal((await f.call('admin/invite', { email: 'dana@example.test' }, { cookie: web })).status, 200);
+await f.call('auth/code/send', { email: 'dana@example.test' });
+const dana = (await f.call('auth/code/verify', { email: 'dana@example.test', code: codeFor('dana@example.test') })).headers.get('set-cookie').split(';')[0];
+assert.equal((await (await f.call('auth/session', undefined, { cookie: dana })).json()).user.hasPassword, false, 'Code-only account');
+await app('code/send', { email: 'dana@example.test' });
+const danaApp = (await (await app('code/verify', { email: 'dana@example.test', code: codeFor('dana@example.test'), platform: 'windows', deviceName: 'DANA-PC' })).json()).token;
+assert.equal((await app('state', undefined, danaApp)).status, 200);
+assert.equal((await f.call('account/delete', { code: '123456' }, { cookie: dana })).status, 403, 'No code was requested yet');
+f.advance(600001); // past the 3-tries-per-10-minutes limit on account deletion
+assert.equal((await f.call('account/delete/code', {}, { cookie: dana })).status, 200);
+const deletionMail = f.emails.at(-1);
+assert.equal(deletionMail.to[0], 'dana@example.test'); assert.match(deletionMail.subject, /^\d{6} confirms deleting your Heartbeat account$/);
+const deletionCode = deletionMail.subject.slice(0, 6);
+await f.call('auth/code/send', { email: 'dana@example.test' });
+const signInCode = codeFor('dana@example.test');
+assert.equal((await f.call('account/delete', { code: signInCode === deletionCode ? '000000' : signInCode }, { cookie: dana })).status, 403, 'A sign-in code cannot delete an account');
+assert.equal((await f.call('account/delete', {}, { cookie: dana })).status, 403, 'Nothing to confirm with: refused');
+assert.equal(f.sqlite.prepare("SELECT lifecycle FROM hb_users WHERE email='dana@example.test'").get().lifecycle, 'active', 'Still here after wrong confirmations');
+assert.equal((await f.call('account/delete', { code: deletionCode }, { cookie: dana })).status, 200, 'The deletion code deletes the account');
+assert.equal(f.sqlite.prepare("SELECT lifecycle FROM hb_users WHERE email='dana@example.test'").get().lifecycle, 'deleting');
+assert.equal((await app('state', undefined, danaApp)).status, 401, 'Their app is signed out at once');
+assert.equal((await f.call('auth/session', undefined, { cookie: dana })).status === 200 && (await (await f.call('auth/session', undefined, { cookie: dana })).json()).user, null, 'Their browser is signed out');
+// The deletion code was single-use and never signs anyone in.
+assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM hb_login_codes WHERE email='delete:dana@example.test'").get().n, 0);
+assert.equal((await f.call('auth/code/verify', { email: 'dana@example.test', code: deletionCode })).status === 200 && deletionCode !== signInCode, false, 'A deletion code is not a sign-in code');
+
+// An expired deletion code is refused.
+assert.equal((await f.call('admin/invite', { email: 'eli@example.test' }, { cookie: web })).status, 200);
+await f.call('auth/code/send', { email: 'eli@example.test' });
+const eli = (await f.call('auth/code/verify', { email: 'eli@example.test', code: codeFor('eli@example.test') })).headers.get('set-cookie').split(';')[0];
+assert.equal((await f.call('account/delete/code', {}, { cookie: eli })).status, 200);
+const eliCode = f.emails.at(-1).subject.slice(0, 6);
+f.advance(10 * 60000 + 1);
+assert.equal((await f.call('account/delete', { code: eliCode }, { cookie: eli })).status, 403, 'Expired deletion code');
+assert.equal(f.sqlite.prepare("SELECT lifecycle FROM hb_users WHERE email='eli@example.test'").get().lifecycle, 'active');
 
 f.close();
 console.log('app api: ok');

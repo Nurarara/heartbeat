@@ -57,6 +57,15 @@ Raise `Version` at the top of `Heartbeat.cs` (for example `1.0.1`), run `npm run
 then restart the server (`npm run beta:serve`). Installed apps pick it up within a day, or straight
 away via **Check for updates**.
 
+Installed apps only accept an update whose details are signed with Heartbeat's **release key**. Keep
+the key file at `.release/windows-release-key.pem` (ignored by git; or set `HEARTBEAT_WINDOWS_RELEASE_KEY`
+to its path) and `npm run windows:build` signs `windows.json` for you. Without the key the build still
+works for new downloads, but installed apps won't update. Never put the key on the server, in the
+repository or in chat; if it's lost, testers reinstall once from the download page.
+
+`npm run test:windows` runs the real app (with Mono off Windows) against a local server: unsigned,
+altered, re-used and forged updates must be refused and leave the installed app untouched.
+
 ## Checks
 
 `Heartbeat.exe --probe <server> <device key>` makes one real check against a server (sign-in key, latest picture, watch-time report, update file); it was used to test the app against a running server.

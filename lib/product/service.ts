@@ -10,7 +10,7 @@ import { deviceRoute } from './devices.ts';
 import {operatorRoute} from './operations.ts';
 import {finishGoogle,googleConfigured,startGoogle} from './google-auth.ts';
 import {appRoute,createPictureLink} from './app-api.ts';
-import {accessRequest,adminRoute,betaMode,invited,isOwner,presence,sendCode,verifyCode} from './beta.ts';
+import {accessRequest,adminRoute,betaMode,checkDeletionCode,invited,isOwner,presence,sendCode,sendDeletionCode,verifyCode} from './beta.ts';
 
 export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof fetch;waitUntil?:(work:Promise<unknown>)=>void}={}) {
  const clock=deps.now||Date.now,fetcher=deps.fetcher||fetch;
@@ -126,9 +126,13 @@ export function productService(env:JobEnv,deps:{now?:()=>number;fetcher?:typeof 
    if(path==='device/approve'&&request.method==='POST') {await rate(env,'pair-approve:global',now,120,60000);const input=await readJSON(request,512);if(typeof input.code!=='string'||!/^\d{6}$/.test(input.code))throw new ProductError('Enter the six-digit code from the desktop app.');await rate(env,`pair:${user.id}`,now,8);const profile=await profileFor(env,user.id,{},now);const approved=await db(env).prepare("UPDATE hb_devices SET owner=?,expires=?,credential_epoch=?,surface_id=?,code_hash='paired-'||id WHERE code_hash=? AND owner IS NULL AND expires>?").bind(user.id,now+30*86400000,user.credential_epoch||0,profile.surfaceId,await hash(input.code),now).run();if(approved.meta.changes!==1)throw new ProductError('Code expired or already used. Request a new code in the desktop app.');return json({paired:true});}
    if(path==='devices'&&request.method==='GET') {const rows=await db(env).prepare('SELECT id,name,created_at,expires FROM hb_devices WHERE owner=? AND expires>?').bind(user.id,now).all();return json({devices:rows.results});}
    if(path==='device/revoke'&&request.method==='POST') {const input=await readJSON(request,512);await db(env).prepare('DELETE FROM hb_devices WHERE id=? AND owner=?').bind(input.id,user.id).run();return json({revoked:true});}
+   if(path==='account/delete/code'&&request.method==='POST')return await sendDeletionCode(request,env,user,now,fetcher);
    if(path==='account/delete'&&request.method==='POST') {
     await rate(env,'security-hash:global',now,120,60000);await rate(env,`delete-hash:${user.id}`,now,3);
-    const input=await readJSON(request,1024);if(typeof input.password!=='string'||!await passwordMatches(input.password,user.password_hash))throw new ProductError('Confirm your password to delete your account.',403);
+    // Confirm with the password, or (for people who sign in with emailed codes) a fresh deletion code.
+    const input=await readJSON(request,1024);
+    if(input.code!==undefined)await checkDeletionCode(env,user,input.code,now);
+    else if(typeof input.password!=='string'||!await passwordMatches(input.password,user.password_hash))throw new ProductError('Confirm your password to delete your account.',403);
     const billing=await db(env).prepare('SELECT subscription_id,status FROM hb_billing WHERE user_id=?').bind(user.id).first<{subscription_id:string|null;status:string}>();if(billing?.subscription_id&&billing.status!=='canceled')throw new ProductError('Cancel your subscription in Billing before deleting your account.',409);
     await beginAccountDeletion(env,user.id,now);
     return await revoke(request,env);

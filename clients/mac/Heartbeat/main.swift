@@ -5,7 +5,7 @@ import AppKit
 import IOKit.ps
 import IOKit.pwr_mgt
 
-let appVersion = "1.0.0"
+let appVersion = "1.0.1"
 let defaultServer = "https://app.heartbeatart.co.uk"
 
 // MARK: - Storage
@@ -50,14 +50,32 @@ final class Store {
 
 struct APIError: Error, LocalizedError { let status: Int; let message: String; var errorDescription: String? { message } }
 
+/// Never follows redirects, so a request (and its device key) can't be passed on to another address.
+final class NoRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+}
+
+/// Talks to the Heartbeat server. The device key is only ever sent there: requests go to paths on the server
+/// ("/api/..."), never to full addresses from elsewhere, and redirects are not followed.
 enum API {
+    static let session = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+    static func safePath(_ path: String) -> Bool {
+        path.range(of: "^/(?!/)[A-Za-z0-9/._?=&%-]{0,299}$", options: .regularExpression) != nil && !path.contains("..")
+    }
+    static func safeID(_ id: String) -> Bool { id.range(of: "^[A-Za-z0-9-]{1,100}$", options: .regularExpression) != nil }
+    static func address(_ path: String) -> URL? {
+        let server = Store.shared.server
+        guard safePath(path), let home = URL(string: server), let url = URL(string: server + path),
+              url.scheme == home.scheme, url.host == home.host, url.port == home.port, url.user == nil else { return nil }
+        return url
+    }
     static func request(_ path: String, method: String = "GET", body: [String: Any]? = nil, token: String = Store.shared.token) async throws -> (Data, Int) {
-        guard let url = URL(string: path.hasPrefix("http") ? path : Store.shared.server + path) else { throw APIError(status: 0, message: "Bad address") }
+        guard let url = address(path) else { throw APIError(status: 0, message: "Bad address") }
         var r = URLRequest(url: url, timeoutInterval: 40); r.httpMethod = method
         r.setValue("HeartbeatMac/\(appVersion)", forHTTPHeaderField: "User-Agent")
         if !token.isEmpty { r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body { r.httpBody = try JSONSerialization.data(withJSONObject: body); r.setValue("application/json", forHTTPHeaderField: "Content-Type") }
-        let (data, response) = try await URLSession.shared.data(for: r)
+        let (data, response) = try await session.data(for: r)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
     static func json(_ path: String, method: String = "GET", body: [String: Any]? = nil, token: String = Store.shared.token) async throws -> [String: Any] {
@@ -75,8 +93,10 @@ enum API {
         do { state = try await json("/api/product/app/state" + (showing ? "?showing=1" : "")) }
         catch let e as APIError where e.status == 401 { store.token = ""; throw e }
         var info = store.info
-        if let picture = state["picture"] as? [String: Any], let id = picture["id"] as? String, id != info["id"] as? String, let path = picture["url"] as? String {
-            let (data, status) = try await request(path)
+        if let picture = state["picture"] as? [String: Any], let id = picture["id"] as? String, id != info["id"] as? String {
+            // The picture's address is built here from its id, so the device key only ever goes to the Heartbeat server.
+            guard safeID(id) else { throw APIError(status: 0, message: "Unexpected picture.") }
+            let (data, status) = try await request("/api/product/app/art/\(id)")
             guard status == 200, data.count > 4, data.prefix(2) == Data([0xFF, 0xD8]), data.suffix(2) == Data([0xFF, 0xD9]) else { throw APIError(status: status, message: "The picture was incomplete.") }
             try data.write(to: store.pictureURL, options: .atomic)
             info["id"] = id; info["title"] = picture["title"]

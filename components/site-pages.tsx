@@ -54,10 +54,11 @@ export function DownloadPage() {
         <a className="ps-button" href={signedIn ? '/app?tab=desktop' : '/auth?mode=login&next=%2Fapp%3Ftab%3Ddesktop'}><Apple size={16} />Open my studio</a></div>
       <ol>
         <li><strong>Home Screen app:</strong> open <strong>app.heartbeatart.co.uk</strong> in Safari, sign in, tap <strong>Share → Add to Home Screen</strong>. Open it from your Home Screen for full-screen Heartbeat that keeps the screen on. Great on a stand or while charging.</li>
-        <li><strong>Lock screen picture:</strong> in your studio, open <em>Room for your desktop</em> and tap <strong>Create my iPhone picture link</strong>, then copy the link.</li>
+        <li><strong>Lock screen picture:</strong> in your studio, open <em>Room for your desktop</em> and tap <strong>Create my iPhone picture key</strong>. You’ll see an <strong>address</strong> and a <strong>header value</strong> (it starts with “Bearer”).</li>
         <li>Open <strong>Shortcuts</strong> → <strong>Automation</strong> → <strong>+</strong> → <strong>Time of Day</strong> → every hour (or a few times a day) → <strong>Run Immediately</strong>.</li>
-        <li>Add the action <strong>Get Contents of URL</strong> and paste your link. Then add <strong>Set Wallpaper</strong>, choose <strong>Lock Screen</strong> and turn off <strong>Show Preview</strong>.</li>
-        <li>Your lock screen now follows Heartbeat. Your link is private: anyone with it could see your pictures, so don’t share it. You can turn it off in your studio at any time.</li>
+        <li>Add the action <strong>Get Contents of URL</strong> and paste the address. Tap the small arrow to show more: set <strong>Method</strong> to <strong>POST</strong>, then under <strong>Headers</strong> add one named <strong>Authorization</strong> and paste the header value.</li>
+        <li>Add <strong>Set Wallpaper</strong>, choose <strong>Lock Screen</strong> and turn off <strong>Show Preview</strong>.</li>
+        <li>Your lock screen now follows Heartbeat. Your key is private: anyone with it could see your pictures, so don’t share it. You can turn it off in your studio at any time.</li>
       </ol>
     </section>
 

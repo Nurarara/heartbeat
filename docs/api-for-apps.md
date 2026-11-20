@@ -53,6 +53,25 @@ Apps never receive a browser cookie, and these routes need no `Origin` header.
 `GET /api/product/app/art/<id>` returns the JPEG (only to the owner's devices). Download it only when
 `picture.id` changes; it never changes for the same id, so it may be cached.
 
+**Apps build this address themselves from `picture.id`** (letters, digits and dashes only) and send the
+device key only to the Heartbeat server: requests go to paths on the server, never to full addresses
+taken from a response, and redirects are not followed. `picture.url` is informational.
+
+## iPhone & iPad picture key (Shortcuts)
+
+The studio creates one private picture key per person. `GET /api/product/app/picture.jpg` with
+`Authorization: Bearer <key>` returns the newest picture and changes nothing (no picture is started or
+marked shown). `POST` to the same address with the same header also asks for the next picture when one is
+due, as a showing screen would. Older links with `?key=` in the address still read the newest picture but
+can never start one. The key can do nothing else.
+
+## Windows updates
+
+`/downloads/windows.json` lists `version`, `url`, `sha256`, `size` and `signature`. The installed app
+replaces itself only when `signature` is a valid RSA-3072 / SHA-256 signature, by Heartbeat's release key,
+over `heartbeat-windows-release/1`, version, url, sha256 and size (one per line), and the downloaded file
+matches the signed size and SHA-256. The private release key is never on the server or in the repository.
+
 ## Mood
 
 `POST /api/product/app/mood` with `{ "mood": "romantic" }`. Saved to the account (the website sees it

@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,7 +24,7 @@ using Microsoft.Win32;
 namespace Heartbeat {
 
 static class App {
- public const string Version = "1.4.2";
+ public const string Version = "1.4.3";
  public const string DefaultServer = "https://app.heartbeatart.co.uk";
  public static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1000000 };
  public static string InstallDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Heartbeat"); } }
@@ -39,6 +40,7 @@ static class App {
   try {
    if (mode == "test") return SelfTest.Run();
    if (mode == "probe") return Probe(args[1], args[2]);
+   if (mode == "update-check") return UpdateCheck(args[1]);
    if (mode == "render") { Render.ToFile(args[1], args[2], int.Parse(args[3]), int.Parse(args[4]), "14:05", "12°C · London"); return 0; }
    Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
    if (mode == "screen") { Application.Run(new SaverContext()); return 0; }
@@ -64,6 +66,7 @@ static class App {
   if (a == "--self-test") return "test";
   if (a == "--render" && args.Length >= 5) return "render";
   if (a == "--probe" && args.Length >= 3) return "probe";
+  if (a == "--update-check" && args.Length >= 2) return "update-check";
   if (a == "--tray") return "tray";
   if (a == "--uninstall") return "uninstall";
   if (a.StartsWith("/s")) return "screen";
@@ -85,6 +88,12 @@ static class App {
   var update = new Api(settings.Server, "").Get("/downloads/windows.json").Result;
   Console.WriteLine("update manifest version=" + App.Str(update, "version") + " newer=" + App.Newer(App.Str(update, "version"), App.Version));
   return 0;
+ }
+ /// What "Check for updates" does, without the tray: used to test the updater against a local server.
+ static int UpdateCheck(string server) {
+  if (!AllowedServer(server)) { Console.WriteLine("refused: server not allowed"); return 2; }
+  try { Console.WriteLine("result: " + Updater.Check(new Settings { Server = server.TrimEnd(new[] { '/' }) }, true).Result); return 0; }
+  catch (AggregateException e) { Console.WriteLine("refused: " + e.InnerException.Message); return 3; }
  }
  public static void StartTray() { try { Process.Start(new ProcessStartInfo(File.Exists(ExePath) ? ExePath : Application.ExecutablePath, "--tray") { UseShellExecute = false }); } catch { } }
 
@@ -146,14 +155,31 @@ class Settings {
 class ApiError : Exception { public int Status; public ApiError(int status, string message) : base(message) { Status = status; } }
 
 /// Talks to the Heartbeat server. Everything clever happens there; the app only shows what it sends.
+/// The device key is only ever sent to that server: requests go to paths on it, never to full addresses from
+/// elsewhere, and redirects are not followed.
 class Api {
  static readonly HttpClient Http = MakeClient();
- static HttpClient MakeClient() { var c = new HttpClient { Timeout = TimeSpan.FromSeconds(40) }; c.DefaultRequestHeaders.UserAgent.ParseAdd("HeartbeatWindows/" + App.Version); return c; }
+ static HttpClient MakeClient() { var c = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(40) }; c.DefaultRequestHeaders.UserAgent.ParseAdd("HeartbeatWindows/" + App.Version); return c; }
+ /// A path on the server ("/api/..."): no other host, no user name, no backslashes or odd characters.
+ public static bool SafePath(string path) {
+  if (string.IsNullOrEmpty(path) || path.Length > 300 || path[0] != '/' || path.StartsWith("//")) return false;
+  foreach (char c in path) if (!(char.IsLetterOrDigit(c) && c < 128) && "/-_.?=&%".IndexOf(c) < 0) return false;
+  return !path.Contains("..");
+ }
+ public static bool SafeId(string id) { if (string.IsNullOrEmpty(id) || id.Length > 100) return false; foreach (char c in id) if (!(char.IsLetterOrDigit(c) && c < 128) && c != '-') return false; return true; }
+ public static Uri Address(string server, string path) {
+  if (!SafePath(path)) return null;
+  Uri home, target;
+  if (!Uri.TryCreate(server.TrimEnd(new[] { '/' }) + "/", UriKind.Absolute, out home) || !Uri.TryCreate(server.TrimEnd(new[] { '/' }) + path, UriKind.Absolute, out target)) return null;
+  return target.Scheme == home.Scheme && target.Host == home.Host && target.Port == home.Port && target.UserInfo == "" ? target : null;
+ }
  readonly string server, token;
  public Api(string server, string token) { this.server = server.TrimEnd('/'); this.token = token; }
 
  async Task<HttpResponseMessage> Send(HttpMethod method, string path, object body) {
-  var request = new HttpRequestMessage(method, server + path);
+  Uri address = Address(server, path);
+  if (address == null) throw new ApiError(0, "Unexpected address.");
+  var request = new HttpRequestMessage(method, address);
   if (!string.IsNullOrEmpty(token)) request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
   if (body != null) request.Content = new StringContent(App.Json.Serialize(body), Encoding.UTF8, "application/json");
   return await Http.SendAsync(request).ConfigureAwait(false);
@@ -188,7 +214,10 @@ static class Cache {
   catch (ApiError e) { if (e.Status == 401) Settings.SetToken(""); throw; }
   var info = Info(); var picture = state.ContainsKey("picture") ? state["picture"] as Dictionary<string, object> : null;
   if (picture != null && App.Str(picture, "id") != App.Str(info, "id")) {
-   var bytes = await api.Bytes(App.Str(picture, "url"), 25000000).ConfigureAwait(false);
+   // The picture's address is built here from its id, so the device key only ever goes to the Heartbeat server.
+   string pictureId = App.Str(picture, "id");
+   if (!Api.SafeId(pictureId)) throw new ApiError(0, "Unexpected picture.");
+   var bytes = await api.Bytes("/api/product/app/art/" + pictureId, 25000000).ConfigureAwait(false);
    if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[bytes.Length - 2] != 0xFF || bytes[bytes.Length - 1] != 0xD9) throw new ApiError(415, "The picture was incomplete.");
    info["id"] = App.Str(picture, "id"); info["title"] = App.Str(picture, "title");
    foreach (var key in new[] { "city", "temperature", "unit", "mood", "email" }) info[key] = state.ContainsKey(key) ? state[key] : null;
@@ -453,17 +482,66 @@ class InstallForm : Form {
 }
 
 /// Downloads a newer version (checked against its SHA-256), swaps it in, and restarts quietly.
+/// Heartbeat's release key. Updates are installed only when their details (version, file, SHA-256, size) carry a
+/// valid signature from the matching private key, which is kept offline and never on the download server.
+/// RSA-3072 with PKCS#1 v1.5 and SHA-256, checked here with plain arithmetic so it works the same on every Windows.
+static class Release {
+ const string Modulus = "ttKROaGM0PWtsA3ZhSl82WM9tRt0oocSunEQjTaUn/otVI3/c/NIaQFlpreyKTTDB3gfQOmzF8zYZAD6L1k5MaGH0dvup33SdtdUINDg5Sf39JoL1/vLXNqOGvhQf+2Cst3gz2N8hPqlI1BfK6e4MLLtyZ24cka1QlKlloBwXyDorJf1xV+i8GlgfBv0a5jPoyr//Fro4KjQ9h7odFQEIswtawslAs44u6CwH5ulV2AlQ+mceDohaiItAddNjCLCvIlTorCbc9aujojDC1dNTvji1lLhwAQ5z6/5fON1pE/bS6B3aPJbHRXrdW3I3uWDFWpWI7p/w3bW41zyw1+802Mof6HzK8gQQNkxHo77Oyftldi4SOcrpv043kstzvM9HVVLdOiDbg5SiL4ilKn4u582z++JogjBm+k8qOjzHoXuF9xVwp+5jDV0wy99rNgcUCXWwpKCZUzRljUIr29BY0id98o0J4WD1ujgxgE8WKMeoJ2Eb70RRzjtdqzmj/iR";
+ const string Exponent = "AQAB";
+ public static string Message(string version, string url, string sha256, string size) { return "heartbeat-windows-release/1\n" + version + "\n" + url + "\n" + sha256 + "\n" + size; }
+ public static bool Verify(string message, string signature) { return Verify(Encoding.UTF8.GetBytes(message), signature, Modulus, Exponent); }
+ public static bool Verify(byte[] data, string signature, string modulus, string exponent) {
+  try {
+   byte[] n = Convert.FromBase64String(modulus), e = Convert.FromBase64String(exponent), sig = Convert.FromBase64String(signature ?? "");
+   int k = n.Length;
+   if (k < 256 || sig.Length != k) return false;
+   BigInteger N = Positive(n), S = Positive(sig);
+   if (S >= N) return false;
+   byte[] m = BigEndian(BigInteger.ModPow(S, Positive(e), N), k);
+   if (m == null) return false;
+   byte[] hash; using (var h = SHA256.Create()) hash = h.ComputeHash(data);
+   // DigestInfo for SHA-256, then the whole expected block is compared byte for byte.
+   byte[] prefix = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
+   int pad = k - 3 - prefix.Length - hash.Length;
+   if (pad < 8) return false;
+   var expected = new byte[k];
+   expected[1] = 1;
+   for (int i = 2; i < 2 + pad; i++) expected[i] = 0xff;
+   Buffer.BlockCopy(prefix, 0, expected, 3 + pad, prefix.Length);
+   Buffer.BlockCopy(hash, 0, expected, 3 + pad + prefix.Length, hash.Length);
+   int diff = 0;
+   for (int i = 0; i < k; i++) diff |= m[i] ^ expected[i];
+   return diff == 0;
+  } catch { return false; }
+ }
+ static BigInteger Positive(byte[] bigEndian) { var little = new byte[bigEndian.Length + 1]; for (int i = 0; i < bigEndian.Length; i++) little[i] = bigEndian[bigEndian.Length - 1 - i]; return new BigInteger(little); }
+ static byte[] BigEndian(BigInteger value, int length) {
+  byte[] little = value.ToByteArray();
+  int used = little.Length; while (used > 0 && little[used - 1] == 0) used--;
+  if (used > length) return null;
+  var result = new byte[length];
+  for (int i = 0; i < used; i++) result[length - 1 - i] = little[i];
+  return result;
+ }
+}
+
 static class Updater {
  public static async Task<string> Check(Settings settings, bool force) {
   if (!force && DateTime.UtcNow.Ticks - settings.LastUpdateCheck < TimeSpan.FromHours(20).Ticks) return "";
   settings.LastUpdateCheck = DateTime.UtcNow.Ticks; settings.Save();
   var api = new Api(settings.Server, "");
   var manifest = await api.Get("/downloads/windows.json").ConfigureAwait(false);
-  string version = App.Str(manifest, "version"), url = App.Str(manifest, "url"), sha = App.Str(manifest, "sha256").ToLowerInvariant();
+  string version = App.Str(manifest, "version"), url = App.Str(manifest, "url"), sha = App.Str(manifest, "sha256"), size = App.Str(manifest, "size");
   if (!App.Newer(version, App.Version)) return "Heartbeat is up to date (" + App.Version + ").";
-  if (!url.StartsWith("/downloads/") || sha.Length != 64) return "";
+  long expected;
+  if (!url.StartsWith("/downloads/") || url.Contains("..") || sha.Length != 64 || !long.TryParse(size, out expected) || expected <= 0 || expected > 50000000) return "";
+  // Only a release signed with Heartbeat's private release key is installed. The server alone can't publish one.
+  if (!Release.Verify(Release.Message(version, url, sha, size), App.Str(manifest, "signature"))) {
+   if (force) throw new Exception("This update couldn't be confirmed as coming from Heartbeat, so it wasn't installed.");
+   return "";
+  }
   var bytes = await api.Bytes(url, 50000000).ConfigureAwait(false);
-  if (App.Sha256(bytes) != sha) throw new Exception("The update didn't match its checksum, so it was not installed.");
+  if (bytes.LongLength != expected || App.Sha256(bytes) != sha) throw new Exception("The update didn't match its signed details, so it was not installed.");
   Installer.Replace(App.ExePath, bytes);
   try { Installer.Replace(App.ScrPath, bytes); } catch { }
   return "updated:" + version;
@@ -796,7 +874,16 @@ static class SelfTest {
   Check(wide.Width >= 1920 && wide.Height >= 1080 && wide.X <= 0 && wide.Y <= 0 && Math.Abs(wide.X + wide.Width / 2 - 960) <= 1, "landscape picture fills a 16:9 screen, centred");
   var tall = Render.Cover(new Size(1344, 768), new Size(1080, 1920));
   Check(tall.Height >= 1920 && tall.Width >= 1080 && Math.Abs(tall.Y + tall.Height / 2 - 960) <= 1, "landscape picture fills a portrait screen, centred");
+  Check(Api.Address("https://app.heartbeatart.co.uk", "/api/product/app/art/abc-123") != null && Api.Address("https://app.heartbeatart.co.uk", "/api/product/app/state?showing=1") != null, "requests go to paths on the Heartbeat server");
+  Check(Api.Address("https://app.heartbeatart.co.uk", "https://evil.example/x") == null && Api.Address("https://app.heartbeatart.co.uk", "//evil.example/x") == null && Api.Address("https://app.heartbeatart.co.uk", "@evil.example/x") == null
+   && Api.Address("https://app.heartbeatart.co.uk", "/\\evil.example") == null && Api.Address("https://app.heartbeatart.co.uk", "/a/../../x") == null && !Api.SafeId("../x") && !Api.SafeId("a/b") && Api.SafeId("3f2a-01"), "the device key is never sent to another address");
   Check(App.Sha256(Encoding.UTF8.GetBytes("abc")) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "sha-256 for update checks");
+  const string signed = "Y55ULpbLFRkHiU47ZGhiV/bOU3tnwZ8SP31xFjjYk21gHL958Bi5YkAsZaat1/6nZUVVJHWVaNQZC+Y5M6D5nvYauzEIAAGJTpVDDimD1Ee4KhQD2U4qbIpwki7Kupjw16F91qhqGlAWxgdHZnz2AnBaU4uSX2mWT/se2Q+aUCUglPXvUHc+ULOskQIB6ZHjGydR049F9sbty+acKA9hBoQbYoN/Ce0nM6ay+VaoNThSRyrrff+0CktN17hXx9lBpkq4kBTSkCN+AtbjgJsnqFs2K/B0VZXSKyKDPq11YHW4bMw/tnN1jWDcJLcFw+fuEoFPU7d2PJdCZQyViLbSycSbGlJzLHRWI03PyBccb8DDjXMJOlw4RGiwqVTfmdamAKjmPRD7ggGG5HDpCj7OUBxf7jaQ2f0t8pqH9je623SgEUS3VHLWVl6xfCp/sp2YkhjKIPz166OS0oHSRWwsSxco3sVMhrhKwEHpBgmbKNs3EVCoNK/WrTx/QyDKURZp";
+  string abc = App.Sha256(Encoding.UTF8.GetBytes("abc"));
+  Check(Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", abc, "3"), signed), "a release signed with Heartbeat's key is accepted");
+  Check(!Release.Verify(Release.Message("9.9.9", "/downloads/Heartbeat.exe", abc, "3"), signed) && !Release.Verify(Release.Message("0.0.1", "/downloads/Other.exe", abc, "3"), signed)
+   && !Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", App.Sha256(new byte[0]), "3"), signed) && !Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", abc, "4"), signed), "a changed version, file, checksum or size is refused");
+  Check(!Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", abc, "3"), "") && !Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", abc, "3"), "not base64!") && !Release.Verify(Release.Message("0.0.1", "/downloads/Heartbeat.exe", abc, "3"), Convert.ToBase64String(new byte[384])), "a missing or forged signature is refused");
   var state = App.Json.Deserialize<Dictionary<string, object>>("{\"ready\":true,\"making\":false,\"picture\":{\"id\":\"x\",\"url\":\"/api/product/app/art/x\"},\"temperature\":12,\"city\":\"London\",\"unit\":\"c\"}");
   Check(App.Truthy(state, "ready") && !App.Truthy(state, "making") && App.Str((Dictionary<string, object>)state["picture"], "url") == "/api/product/app/art/x", "reads the server's state");
   Check(Cache.Caption(state) == "12°C · London" && Cache.Caption(new Dictionary<string, object> { { "city", "Paris" } }) == "Paris" && Cache.Caption(new Dictionary<string, object> { { "temperature", 50 }, { "unit", "f" } }) == "50°F", "caption under the clock");

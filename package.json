@@ -35,6 +35,7 @@
     "start": "node scripts/start-local.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
+    "test:windows": "node tests/windows-updater.mjs",
     "test:architecture": "node --experimental-strip-types scripts/schema-contract.mjs && node --experimental-strip-types tests/architecture.mjs && node --experimental-strip-types tests/architecture-failures.mjs && node --experimental-strip-types tests/state-lifecycle.mjs && node --experimental-strip-types tests/operations-retention.mjs && node --experimental-strip-types tests/security-context.mjs && node --experimental-strip-types tests/usage-adjustments.mjs && node tests/release-activation.mjs && node tests/worker-weather.mjs && node --experimental-strip-types tests/weather-generation.mjs && node --experimental-strip-types tests/password-runtime.mjs && node --experimental-strip-types tests/weather-boundary.mjs && node --experimental-strip-types tests/google-auth.mjs && node --experimental-strip-types tests/google-workerd.mjs && node --experimental-strip-types tests/account-recovery.mjs",
     "check:schema": "node --experimental-strip-types scripts/schema-contract.mjs",
     "beta:setup": "node scripts/beta-setup.mjs",

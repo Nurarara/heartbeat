@@ -26,7 +26,7 @@ try{
  const ack=await acknowledgeDisplay(f.env,a.data.user.id,{id:job.id,eventId:'first-display'},f.now());assert.equal(ack.displayed,true);
  const again=await acknowledgeDisplay(f.env,a.data.user.id,{id:job.id,eventId:'first-display'},f.now());assert.equal(again.duplicate,true);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM hb_display_events').get().n,1);
  assert.equal((await profileFor(f.env,a.data.user.id,{},f.now())).memory.history.length,1);
- const readAI=aiService(f.env),call=(path,body)=>readAI.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/${path}`,{method:body?'POST':'GET',headers:{Origin:f.env.HEARTBEAT_APP_ORIGIN,Cookie:a.cookie,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));
+ const readAI=aiService(f.env,{now:f.now}),call=(path,body)=>readAI.handle(new Request(`${f.env.HEARTBEAT_APP_ORIGIN}/api/ai/${path}`,{method:body?'POST':'GET',headers:{Origin:f.env.HEARTBEAT_APP_ORIGIN,Cookie:a.cookie,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));
  assert.equal((await call('prepare',{requestId:crypto.randomUUID(),location:preferences.location})).status,403);
  f.advance(3600000);
  const next=crypto.randomUUID();await f.call('generation',{requestId:next,force:true},{cookie:a.cookie});const second=f.sqlite.prepare('SELECT * FROM hb_jobs WHERE request_id=?').get(next);

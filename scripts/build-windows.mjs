@@ -3,14 +3,14 @@
 // Elsewhere it uses Mono's `mcs` if present (useful for checking; the result runs on Windows too).
 import {existsSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {createHash,createPrivateKey,createPublicKey,sign} from 'node:crypto';
 import path from 'node:path';
 
 const source='clients/windows/Heartbeat.cs',outDir='public/downloads',exe=path.join(outDir,'Heartbeat.exe');
 const version=/const string Version = "(\d+\.\d+\.\d+)"/.exec(readFileSync(source,'utf8'))?.[1];
 if(!version)throw new Error('Could not read the app version from Heartbeat.cs.');
 mkdirSync(outDir,{recursive:true});rmSync(exe,{force:true});
-const refs=['System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Net.Http.dll','System.Web.Extensions.dll','System.Security.dll','Microsoft.CSharp.dll'];
+const refs=['System.dll','System.Core.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Net.Http.dll','System.Web.Extensions.dll','System.Security.dll','Microsoft.CSharp.dll','System.Numerics.dll'];
 let result;
 if(process.platform==='win32'){
  const csc=path.join(process.env.WINDIR||'C:\\Windows','Microsoft.NET','Framework64','v4.0.30319','csc.exe');
@@ -29,7 +29,21 @@ if(result.status!==0){process.stderr.write(result.stdout+result.stderr);process.
 const test=spawnSync(process.platform==='win32'?path.resolve(exe):'mono',process.platform==='win32'?['--self-test']:[exe,'--self-test'],{encoding:'utf8',windowsHide:true,timeout:30000});
 if(test.status!==0){process.stderr.write((test.stdout||'')+(test.stderr||test.error?.message||''));throw new Error('Windows app self-tests failed.');}
 const bytes=readFileSync(exe),sha256=createHash('sha256').update(bytes).digest('hex');
-// Installed apps read this once a day and update themselves when the version is newer.
-writeFileSync(path.join(outDir,'windows.json'),JSON.stringify({version,url:'/downloads/Heartbeat.exe',sha256,size:bytes.length,builtAt:new Date().toISOString()},null,2)+'\n');
+// Installed apps read this once a day and update themselves when the version is newer, but only when these details
+// carry a valid signature from Heartbeat's release key (kept off the server, never committed). Without the key the
+// manifest is written unsigned and installed apps simply don't update.
+const manifest={version,url:'/downloads/Heartbeat.exe',sha256,size:bytes.length,builtAt:new Date().toISOString()};
+const keyFile=process.env.HEARTBEAT_WINDOWS_RELEASE_KEY||'.release/windows-release-key.pem';
+let signed=false;
+if(existsSync(keyFile)){
+ const key=createPrivateKey(readFileSync(keyFile));
+ const modulus=Buffer.from(createPublicKey(key).export({format:'jwk'}).n,'base64url').toString('base64');
+ const embedded=/const string Modulus = "([A-Za-z0-9+/=]+)";/.exec(readFileSync(source,'utf8'))?.[1];
+ if(modulus!==embedded)throw new Error(`${keyFile} is not the release key built into Heartbeat.cs, so it can't sign this update.`);
+ const message=['heartbeat-windows-release/1',manifest.version,manifest.url,manifest.sha256,String(manifest.size)].join('\n');
+ manifest.signature=sign('sha256',Buffer.from(message),key).toString('base64');signed=true;
+}
+writeFileSync(path.join(outDir,'windows.json'),JSON.stringify(manifest,null,2)+'\n');
 console.log(`Built Heartbeat for Windows ${version} → ${exe} (${Math.round(bytes.length/1024)} KB). Self-tests passed.`);
+console.log(signed?'Update signed with the release key.':`Not signed: ${keyFile} was not found, so installed apps won't take this update. New downloads still work.`);
 console.log('Next: npm run beta:serve (rebuilds the site so the download and update are served).');

@@ -23,7 +23,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 const val SERVER = "https://app.heartbeatart.co.uk"
-const val APP_VERSION_CODE = 3
+const val APP_VERSION_CODE = 4
 
 class ApiError(val status: Int, message: String) : Exception(message)
 
@@ -50,9 +50,21 @@ class Store(context: Context) {
     val signedIn get() = token.length == 64
 }
 
+/** Talks to the Heartbeat server. The device key is only ever sent there: requests go to paths on the server,
+ *  never to full addresses from elsewhere, and redirects are not followed. */
 class Api(private val token: String = "") {
+    companion object {
+        private val SAFE_PATH = Regex("^/(?!/)[A-Za-z0-9/._?=&%-]{0,299}$")
+        private val SAFE_ID = Regex("^[A-Za-z0-9-]{1,100}$")
+        fun safePath(path: String) = SAFE_PATH.matches(path) && !path.contains("..")
+        fun safeId(id: String) = SAFE_ID.matches(id)
+    }
     private fun open(path: String, method: String): HttpURLConnection {
-        val c = URL(if (path.startsWith("http")) path else SERVER + path).openConnection() as HttpURLConnection
+        if (!safePath(path)) throw ApiError(0, "Unexpected address.")
+        val url = URL(SERVER + path); val home = URL(SERVER)
+        if (url.protocol != home.protocol || url.host != home.host || url.port != home.port || url.userInfo != null) throw ApiError(0, "Unexpected address.")
+        val c = url.openConnection() as HttpURLConnection
+        c.instanceFollowRedirects = false
         c.requestMethod = method; c.connectTimeout = 15000; c.readTimeout = 40000
         c.setRequestProperty("User-Agent", "HeartbeatAndroid/$APP_VERSION_CODE")
         if (token.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $token")
@@ -108,7 +120,10 @@ object Picture {
         val info = info(context)
         val picture = state.optJSONObject("picture")
         if (picture != null && picture.optString("id") != info.optString("id")) {
-            val data = api.bytes(picture.optString("url"), 25_000_000)
+            // The picture's address is built here from its id, so the device key only ever goes to the Heartbeat server.
+            val pictureId = picture.optString("id")
+            if (!Api.safeId(pictureId)) throw ApiError(0, "Unexpected picture.")
+            val data = api.bytes("/api/product/app/art/$pictureId", 25_000_000)
             if (data.size < 4 || data[0] != 0xFF.toByte() || data[1] != 0xD8.toByte() || data[data.size - 2] != 0xFF.toByte() || data[data.size - 1] != 0xD9.toByte()) throw ApiError(415, "The picture was incomplete.")
             val temp = File(context.filesDir, "current-${UUID.randomUUID()}.tmp"); temp.writeBytes(data)
             if (!temp.renameTo(file(context))) { temp.delete(); throw ApiError(500, "The picture couldn't be saved.") }

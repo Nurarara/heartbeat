@@ -51,3 +51,6 @@ next-env.d.ts
 .dev.vars*
 !.env.example
 
+
+# Release signing keys (never commit)
+/.release/
